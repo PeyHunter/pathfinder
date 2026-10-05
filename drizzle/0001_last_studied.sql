@@ -1,0 +1,1 @@
+ALTER TABLE `paths` ADD `last_studied_at` integer;

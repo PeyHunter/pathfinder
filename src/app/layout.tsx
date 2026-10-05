@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
+import { Suspense } from "react";
+import { UsageFooter } from "@/components/usage-footer";
 import "./globals.css";
 
 // Macs render SF Pro via -apple-system; Inter is the closest match everywhere else.
@@ -28,7 +30,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </header>
         <main className="flex-1">{children}</main>
         <footer className="bg-mist text-ink-3 text-xs">
-          <div className="mx-auto max-w-[980px] px-5 py-5">Pathfinder: learn anything, one step at a time.</div>
+          <div className="mx-auto max-w-[980px] px-5 py-5 space-y-1">
+            <p>Pathfinder: learn anything, one step at a time.</p>
+            <Suspense fallback={null}>
+              <UsageFooter />
+            </Suspense>
+          </div>
         </footer>
       </body>
     </html>

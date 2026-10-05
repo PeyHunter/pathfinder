@@ -28,6 +28,8 @@ export const paths = sqliteTable("paths", {
   resolutionsJson: text("resolutions_json"),
   error: text("error"),
   createdAt: createdAt(),
+  // Set whenever a concept in this path is opened; drives "Continue where you left off".
+  lastStudiedAt: integer("last_studied_at", { mode: "timestamp" }),
 });
 
 export const modules = sqliteTable("modules", {
@@ -107,5 +109,18 @@ export const chatMessages = sqliteTable("chat_messages", {
     .references(() => concepts.id, { onDelete: "cascade" }),
   role: text("role", { enum: ["user", "assistant"] }).notNull(),
   content: text("content").notNull(),
+  createdAt: createdAt(),
+});
+
+// One row per billed model attempt (a refusal fallback bills two models in one call).
+// Cost is fixed at write time so later price changes don't rewrite history.
+export const apiUsage = sqliteTable("api_usage", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  model: text("model").notNull(),
+  inputTokens: integer("input_tokens").notNull(),
+  outputTokens: integer("output_tokens").notNull(),
+  cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
+  cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
+  costUsd: real("cost_usd").notNull(),
   createdAt: createdAt(),
 });

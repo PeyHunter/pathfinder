@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { z } from "zod";
+import type { Attempt } from "./pricing";
+import { assertUnderSpendLimit, recordUsage } from "./usage";
 
 const client = new Anthropic();
 
@@ -25,6 +27,8 @@ export async function generateStructured<S extends z.ZodType, R>(opts: {
   const maxRepairs = opts.maxRepairs ?? 2;
 
   for (let attempt = 0; ; attempt++) {
+    // Checked before every attempt, repairs included, so a repair loop can't run past the limit.
+    assertUnderSpendLimit();
     const message = await client.beta.messages
       .stream({
         model: MODEL,
@@ -37,6 +41,7 @@ export async function generateStructured<S extends z.ZodType, R>(opts: {
         messages,
       })
       .finalMessage();
+    recordUsage(billedAttempts(message));
 
     if (message.stop_reason === "refusal")
       throw new Error(`The model declined this request (${message.stop_details?.category ?? "no category"}).`);
@@ -66,4 +71,13 @@ export async function generateStructured<S extends z.ZodType, R>(opts: {
       content: `Your JSON has these problems:\n- ${errors.join("\n- ")}\n\nReturn the complete corrected JSON.`,
     });
   }
+}
+
+// usage.iterations lists every billed attempt (including a declined model before a fallback);
+// top-level usage only covers the attempt that produced the returned message.
+function billedAttempts(message: Anthropic.Beta.BetaMessage): Attempt[] {
+  const iterations = (message.usage.iterations ?? []).flatMap((it) =>
+    it.type === "message" || it.type === "fallback_message" ? [{ ...it, model: it.model ?? message.model }] : [],
+  );
+  return iterations.length > 0 ? iterations : [{ ...message.usage, model: message.model }];
 }
