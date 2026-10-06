@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { topoSort, validateGraph } from "./graph";
+import { MAX_CONCEPTS_PER_MODULE } from "./limits";
 import type { PathGraph } from "./schemas";
 
 const concept = (
@@ -76,5 +77,14 @@ describe("validateGraph", () => {
     expect(errors).toMatch(/"ghost", which does not exist/);
     expect(errors).toMatch(/later module "advanced"/);
     expect(errors).toMatch(/"Helm charts" is not covered/);
+  });
+
+  it(`rejects a module with more than ${MAX_CONCEPTS_PER_MODULE} concepts`, () => {
+    const basics = (n: number) => Array.from({ length: n }, (_, i) => concept(`b${i}`, "basics"));
+    const full = [...basics(MAX_CONCEPTS_PER_MODULE), concept("pod", "advanced", [], ["Pod"])];
+    expect(validateGraph(graph(full), ["Pod"]).ok).toBe(true);
+    const over = [...basics(MAX_CONCEPTS_PER_MODULE + 1), concept("pod", "advanced", [], ["Pod"])];
+    const r = validateGraph(graph(over), ["Pod"]);
+    expect((r as { errors: string[] }).errors.join("\n")).toMatch(`Module "basics" has ${MAX_CONCEPTS_PER_MODULE + 1} concepts`);
   });
 });

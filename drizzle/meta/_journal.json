@@ -22,6 +22,27 @@
       "when": 1791195490791,
       "tag": "0002_api_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791197332563,
+      "tag": "0003_module_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791273619142,
+      "tag": "0004_flat_paths",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791275688634,
+      "tag": "0005_modules_return",
+      "breakpoints": true
     }
   ]
 }

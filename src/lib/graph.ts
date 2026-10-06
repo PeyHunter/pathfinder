@@ -1,3 +1,4 @@
+import { MAX_CONCEPTS_PER_MODULE } from "./limits";
 import type { PathGraph } from "./schemas";
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -81,7 +82,12 @@ export function validateGraph(
   }
 
   for (const m of graph.modules) {
-    if (!graph.concepts.some((c) => c.module === m.key)) errors.push(`Module "${m.key}" has no concepts.`);
+    const n = graph.concepts.filter((c) => c.module === m.key).length;
+    if (n === 0) errors.push(`Module "${m.key}" has no concepts.`);
+    if (n > MAX_CONCEPTS_PER_MODULE)
+      errors.push(
+        `Module "${m.key}" has ${n} concepts; the maximum is ${MAX_CONCEPTS_PER_MODULE}. Split it into two modules or move concepts to a neighbouring module.`,
+      );
   }
 
   const sorted = topoSort(

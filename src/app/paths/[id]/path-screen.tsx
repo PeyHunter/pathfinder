@@ -2,11 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Button, Card, Eyebrow, Section, Spinner } from "@/components/ui";
+import Link from "next/link";
+import { MarkDone } from "@/components/mark-done";
+import { PathActions } from "@/components/path-actions";
+import { ProgressBar, StatusBadge } from "@/components/status";
+import { Button, ButtonLink, Card, Eyebrow, Section, Spinner } from "@/components/ui";
+import type { PathProgress } from "@/lib/learning-service";
 import type { PathView } from "@/lib/path-service";
 import type { Resolution } from "@/lib/schemas";
 
-export default function PathScreen({ initial }: { initial: PathView }) {
+export default function PathScreen({ initial, progress }: { initial: PathView; progress: PathProgress | null }) {
   const [path, setPath] = useState(initial);
   const router = useRouter();
   const working = path.status === "normalizing" || path.status === "generating";
@@ -16,10 +21,13 @@ export default function PathScreen({ initial }: { initial: PathView }) {
     if (!working) return;
     const t = setInterval(async () => {
       const res = await fetch(`/api/paths/${path.id}`);
-      if (res.ok) setPath(await res.json());
+      if (!res.ok) return;
+      const next: PathView = await res.json();
+      setPath(next);
+      if (next.status === "ready") router.refresh(); // the server side adds progress for ready paths
     }, 2000);
     return () => clearInterval(t);
-  }, [working, path.id]);
+  }, [working, path.id, router]);
 
   const refresh = async () => {
     const res = await fetch(`/api/paths/${path.id}`);
@@ -32,11 +40,12 @@ export default function PathScreen({ initial }: { initial: PathView }) {
     return <Spinner label="Designing your path. This can take a minute or two." />;
   if (path.status === "failed") return <Failed path={path} onRetry={refresh} />;
   if (path.status === "awaiting_confirmation") return <Review path={path} onConfirmed={refresh} />;
-  return <Result path={path} />;
+  return <Result path={path} progress={progress} />;
 }
 
 function Failed({ path, onRetry }: { path: PathView; onRetry: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <Section narrow className="text-center">
       <h1 className="text-4xl font-semibold">That didn’t work.</h1>
@@ -46,17 +55,30 @@ function Failed({ path, onRetry }: { path: PathView; onRetry: () => void }) {
         disabled={busy}
         onClick={async () => {
           setBusy(true);
-          await fetch(`/api/paths/${path.id}/retry`, { method: "POST" });
+          setError(null);
+          const res = await fetch(`/api/paths/${path.id}/retry`, { method: "POST" }).catch(() => null);
+          if (!res?.ok) {
+            setError(await errorText(res));
+            setBusy(false);
+            return;
+          }
           onRetry();
         }}
       >
         Try again
       </Button>
+      {error && <p className="mt-4 text-sm text-danger">{error}</p>}
     </Section>
   );
 }
 
 type Choice = Resolution["choice"];
+
+async function errorText(res: Response | null): Promise<string> {
+  if (!res) return "Couldn’t reach the server. Is it still running?";
+  const body = await res.json().catch(() => null);
+  return body?.error ?? `The server answered ${res.status}. Please try again.`;
+}
 
 function Review({ path, onConfirmed }: { path: PathView; onConfirmed: () => void }) {
   const normalized = path.normalized!;
@@ -64,17 +86,24 @@ function Review({ path, onConfirmed }: { path: PathView; onConfirmed: () => void
     Object.fromEntries(normalized.ambiguous.map((a) => [a.id, { kind: "pick", index: a.likely }])),
   );
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const changed = normalized.concepts.filter((c) => c.change);
   const customEmpty = Object.values(choices).some((c) => c.kind === "custom" && !c.text.trim());
 
   async function confirm() {
     setBusy(true);
+    setError(null);
     const resolutions = Object.entries(choices).map(([id, choice]) => ({ id, choice }));
-    await fetch(`/api/paths/${path.id}/confirm`, {
+    const res = await fetch(`/api/paths/${path.id}/confirm`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ resolutions }),
-    });
+    }).catch(() => null);
+    if (!res?.ok) {
+      setError(await errorText(res));
+      setBusy(false);
+      return;
+    }
     onConfirmed();
   }
 
@@ -161,6 +190,7 @@ function Review({ path, onConfirmed }: { path: PathView; onConfirmed: () => void
           <Button onClick={confirm} disabled={busy || customEmpty}>
             {busy ? "Starting…" : "Looks good, build my path"}
           </Button>
+          {error && <p className="mt-4 text-sm text-danger">{error}</p>}
           <p className="mt-3 text-sm text-ink-3">I’ll add the basics you need and put everything in order.</p>
         </div>
       </Section>
@@ -183,44 +213,81 @@ function Option({ selected, onSelect, children }: { selected: boolean; onSelect:
   );
 }
 
-function Result({ path }: { path: PathView }) {
+function Result({ path, progress }: { path: PathView; progress: PathProgress | null }) {
   const all = path.modules.flatMap((m) => m.concepts);
   const added = all.filter((c) => c.addedBySystem).length;
+  const status = (slug: string) => progress?.statuses[slug] ?? "available";
+  const continueHref = progress?.next ? `/paths/${path.id}/concepts/${progress.next.slug}` : null;
   return (
     <>
       <Section className="text-center animate-rise">
-        <Eyebrow>Your path is ready</Eyebrow>
+        <Eyebrow>{progress?.started ? "Your path" : "Your path is ready"}</Eyebrow>
         <h1 className="text-5xl md:text-6xl font-semibold">{path.title}</h1>
         <p className="mx-auto mt-5 max-w-xl text-[21px] text-ink-2">
           {all.length} steps in {path.modules.length} modules. {added} of them are basics I added so nothing is skipped.
         </p>
+        {progress && (
+          <div className="mx-auto mt-8 max-w-md space-y-2">
+            <ProgressBar done={progress.mastered} total={progress.total} />
+            <p className="text-sm text-ink-2">
+              {progress.mastered} of {progress.total} concepts mastered
+            </p>
+          </div>
+        )}
+        <div className="mt-8 flex flex-col items-center gap-3">
+          {continueHref ? (
+            <ButtonLink href={continueHref}>
+              {progress?.started ? `Continue: ${progress.next!.name}` : "Start learning"}
+            </ButtonLink>
+          ) : (
+            progress && <p className="text-xl font-semibold text-success">You’ve mastered every concept in this path.</p>
+          )}
+          <PathActions id={path.id} title={path.title} className="justify-center" />
+        </div>
       </Section>
 
       <Section tone="mist">
         <div className="space-y-6">
-          {path.modules.map((m) => (
-            <Card key={m.order} className="p-8">
-              <p className="text-sm text-ink-3">Module {m.order}</p>
-              <h2 className="text-2xl font-semibold">{m.title}</h2>
-              <p className="mt-1 text-ink-2">{m.whyItMatters}</p>
-              <ol className="mt-6 space-y-3">
-                {m.concepts.map((c) => (
-                  <li key={c.slug} className="flex gap-4">
-                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-mist text-sm font-medium text-ink-2">
-                      {c.step}
-                    </span>
-                    <div>
-                      <p className="font-medium">
-                        {c.name}
-                        {c.addedBySystem && <span className="ml-2 rounded-full bg-mist px-2 py-0.5 text-xs text-ink-3">Added basic</span>}
-                      </p>
-                      <p className="text-[15px] text-ink-2">{c.summary}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </Card>
-          ))}
+          {path.modules.map((m) => {
+            const done = m.concepts.filter((c) => status(c.slug) === "mastered").length;
+            const touched = m.concepts.some((c) => status(c.slug) !== "available" && status(c.slug) !== "locked");
+            return (
+              <Card key={m.order} className="p-8">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-ink-3">
+                      Module {m.order} · {done} of {m.concepts.length} mastered
+                    </p>
+                    <h2 className="text-2xl font-semibold">{m.title}</h2>
+                    <p className="mt-1 text-ink-2">{m.whyItMatters}</p>
+                  </div>
+                  <ButtonLink href={`/paths/${path.id}/modules/${m.order}`} variant={touched ? "primary" : "secondary"}>
+                    {done === m.concepts.length ? "Review module" : touched ? "Continue module" : "Start module"}
+                  </ButtonLink>
+                </div>
+                <ol className="mt-6 space-y-4">
+                  {m.concepts.map((c) => (
+                    <li key={c.slug} className="flex gap-4">
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-mist text-sm font-medium text-ink-2">
+                        {c.step}
+                      </span>
+                      <div className="flex-1">
+                        <p className="font-medium">
+                          <Link href={`/paths/${path.id}/concepts/${c.slug}`} className="hover:underline">
+                            {c.name}
+                          </Link>
+                          {c.addedBySystem && <span className="ml-2 rounded-full bg-mist px-2 py-0.5 text-xs text-ink-3">Added basic</span>}
+                        </p>
+                        <p className="text-[15px] text-ink-2">{c.summary}</p>
+                        {progress && <MarkDone pathId={path.id} slug={c.slug} status={status(c.slug)} className="mt-2" />}
+                      </div>
+                      {progress && <StatusBadge status={status(c.slug)} />}
+                    </li>
+                  ))}
+                </ol>
+              </Card>
+            );
+          })}
         </div>
       </Section>
 

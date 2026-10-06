@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { PathActions } from "@/components/path-actions";
+import { ProgressBar } from "@/components/status";
 import { ButtonLink, Section } from "@/components/ui";
+import { getPathProgress } from "@/lib/learning-service";
 import { listPaths } from "@/lib/path-service";
 
 export const dynamic = "force-dynamic";
@@ -22,17 +25,31 @@ export default function Home() {
         <Section tone="mist">
           <h2 className="text-3xl md:text-4xl font-semibold mb-8">Your paths</h2>
           <div className="grid gap-5 sm:grid-cols-2">
-            {all.map((p) => (
-              <Link
-                key={p.id}
-                href={`/paths/${p.id}`}
-                className="group rounded-[var(--radius-card)] bg-canvas p-7 shadow-card transition-transform hover:scale-[1.01]"
-              >
-                <p className="text-xs uppercase tracking-wide text-ink-3">{statusLabel[p.status]}</p>
-                <h3 className="mt-2 text-2xl font-semibold">{p.title}</h3>
-                <p className="mt-4 text-link group-hover:underline">Open ›</p>
-              </Link>
-            ))}
+            {all.map((p) => {
+              const prog = p.status === "ready" ? getPathProgress(p.id) : null;
+              return (
+                <div key={p.id} className="rounded-[var(--radius-card)] bg-canvas p-7 shadow-card">
+                  <p className="text-xs uppercase tracking-wide text-ink-3">{statusLabel[p.status]}</p>
+                  <Link href={`/paths/${p.id}`} className="mt-2 block text-2xl font-semibold hover:underline">
+                    {p.title}
+                  </Link>
+                  {prog && (
+                    <div className="mt-4 space-y-1.5">
+                      <ProgressBar done={prog.mastered} total={prog.total} />
+                      <p className="text-sm text-ink-2">
+                        {prog.mastered} of {prog.total} concepts mastered
+                      </p>
+                    </div>
+                  )}
+                  <div className="mt-5 flex items-center justify-between gap-4">
+                    <Link href={`/paths/${p.id}`} className="text-link hover:underline">
+                      {prog?.started ? "Continue ›" : "Open ›"}
+                    </Link>
+                    <PathActions id={p.id} title={p.title} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Section>
       )}

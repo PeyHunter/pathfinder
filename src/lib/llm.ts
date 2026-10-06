@@ -21,6 +21,7 @@ export async function generateStructured<S extends z.ZodType, R>(opts: {
   schema: S;
   check: (value: z.infer<S>) => { ok: true; result: R } | { ok: false; errors: string[] };
   effort?: Effort;
+  model?: string;
   maxRepairs?: number;
 }): Promise<{ value: z.infer<S>; result: R; repairs: number }> {
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: opts.prompt }];
@@ -31,7 +32,7 @@ export async function generateStructured<S extends z.ZodType, R>(opts: {
     assertUnderSpendLimit();
     const message = await client.beta.messages
       .stream({
-        model: MODEL,
+        model: opts.model ?? MODEL,
         max_tokens: 64000,
         output_config: { effort: opts.effort ?? "high", format: betaZodOutputFormat(opts.schema) },
         // If a safety classifier declines (possible with security-flavoured topics like SSH or Vault),
@@ -71,6 +72,37 @@ export async function generateStructured<S extends z.ZodType, R>(opts: {
       content: `Your JSON has these problems:\n- ${errors.join("\n- ")}\n\nReturn the complete corrected JSON.`,
     });
   }
+}
+
+/**
+ * A plain-text reply in a conversation (the tutor chat), with the same spend cap, refusal fallbacks and
+ * usage tracking as generateStructured.
+ */
+export async function generateText(opts: {
+  system: string;
+  messages: Anthropic.Beta.BetaMessageParam[];
+  effort?: Effort;
+  model?: string;
+}): Promise<string> {
+  assertUnderSpendLimit();
+  const message = await client.beta.messages
+    .stream({
+      model: opts.model ?? MODEL,
+      max_tokens: 16000,
+      system: opts.system,
+      output_config: { effort: opts.effort ?? "medium" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages: opts.messages,
+    })
+    .finalMessage();
+  recordUsage(billedAttempts(message));
+
+  if (message.stop_reason === "refusal")
+    throw new Error(`The model declined this request (${message.stop_details?.category ?? "no category"}).`);
+  const text = message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("").trim();
+  if (!text) throw new Error(message.stop_reason === "max_tokens" ? "The reply ran out of tokens." : "The reply was empty.");
+  return text;
 }
 
 // usage.iterations lists every billed attempt (including a declined model before a fallback);

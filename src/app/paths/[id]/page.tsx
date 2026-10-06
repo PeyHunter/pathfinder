@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { getPathProgress } from "@/lib/learning-service";
 import { getPathGraph } from "@/lib/path-service";
 import PathScreen from "./path-screen";
 
@@ -8,5 +9,6 @@ export default async function PathPage({ params }: PageProps<"/paths/[id]">) {
   const { id } = await params;
   const path = getPathGraph(Number(id));
   if (!path) notFound();
-  return <PathScreen initial={path} />;
+  const progress = path.status === "ready" ? getPathProgress(path.id) : null;
+  return <PathScreen initial={path} progress={progress} />;
 }

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { conceptPrereqs, concepts, modules, paths } from "@/db/schema";
 import { validateGraph } from "./graph";
+import { MAX_CONCEPTS_PER_MODULE } from "./limits";
 import { generateStructured } from "./llm";
 import { loadPrompt } from "./prompts";
 import { NormalizeResult, PathGraph, type Resolution } from "./schemas";
@@ -66,7 +67,11 @@ export async function runBuild(pathId: number) {
       JSON.parse(path.resolutionsJson ?? "[]"),
     );
     const { value: graph, result: order } = await generateStructured({
-      prompt: loadPrompt("build-path", { level: path.learnerLevel, confirmed: names.map((n) => `- ${n}`).join("\n") }),
+      prompt: loadPrompt("build-path", {
+        max: String(MAX_CONCEPTS_PER_MODULE),
+        level: path.learnerLevel,
+        confirmed: names.map((n) => `- ${n}`).join("\n"),
+      }),
       schema: PathGraph,
       effort: "high",
       check: (g) => {
@@ -179,4 +184,13 @@ export type PathView = NonNullable<ReturnType<typeof getPathGraph>>;
 
 export function listPaths() {
   return db.select({ id: paths.id, title: paths.title, status: paths.status, createdAt: paths.createdAt }).from(paths).orderBy(paths.createdAt).all();
+}
+
+export function renamePath(pathId: number, title: string) {
+  return db.update(paths).set({ title }).where(eq(paths.id, pathId)).run().changes === 1;
+}
+
+/** Modules, concepts, progress and quiz attempts go with it (ON DELETE CASCADE). Spend history is kept. */
+export function deletePath(pathId: number) {
+  return db.delete(paths).where(eq(paths.id, pathId)).run().changes === 1;
 }

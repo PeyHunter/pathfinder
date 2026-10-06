@@ -68,3 +68,45 @@ export const PathGraph = z.object({
   ),
 });
 export type PathGraph = z.infer<typeof PathGraph>;
+
+// Lessons for every concept in one module, generated together when the module is first opened.
+export const ModuleLessons = z.object({
+  lessons: z.array(
+    z.object({
+      slug: z.string().describe("slug of the concept this lesson is for, exactly as given"),
+      explanation: z
+        .string()
+        .describe("Plain-English definition and explanation: 4-6 short paragraphs separated by blank lines. `backticks` for commands or code."),
+      example: z.object({
+        description: z.string().describe("A concrete, everyday or hands-on example, 1-2 short paragraphs"),
+        code: z.string().describe("A short code or terminal snippet that shows the idea. Empty string if code doesn't fit."),
+        language: z.string().describe("Language of the snippet, e.g. 'bash', 'yaml', 'python'. Empty string if no code."),
+      }),
+      questions: z
+        .array(
+          z.object({
+            prompt: z.string().describe("The question, answerable in the learner's own words in a few sentences or lines"),
+            kind: z.enum(["explain", "apply", "code"]),
+            rubric: z.string().describe("What a correct answer must show. Never shown to the learner."),
+          }),
+        )
+        .describe("2-3 questions"),
+    }),
+  ),
+});
+export type ModuleLessons = z.infer<typeof ModuleLessons>;
+
+export const QuizGrade = z.object({
+  results: z.array(
+    z.object({
+      verdict: z.enum(["correct", "partly", "incorrect"]),
+      feedback: z.string().describe("Plain-English feedback on this answer, written to the learner. 2-5 short sentences."),
+      reply_to_question: z
+        .string()
+        .describe("If the learner asked you something in this answer, a direct, plain answer to it. Empty string if they didn't ask anything."),
+    }),
+  ),
+  passed: z.boolean().describe("true only if the answers together show the learner really understands the concept"),
+  summary: z.string().describe("Two or three short, plain sentences to the learner: what they've got, and exactly what to work on if not passed"),
+});
+export type QuizGrade = z.infer<typeof QuizGrade>;

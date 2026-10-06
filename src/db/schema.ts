@@ -40,6 +40,11 @@ export const modules = sqliteTable("modules", {
   order: integer("order").notNull(),
   title: text("title").notNull(),
   whyItMatters: text("why_it_matters").notNull(),
+  // Lessons for all of a module's concepts are generated in one call the first time the module is opened.
+  contentStatus: text("content_status", { enum: ["none", "generating", "ready", "failed"] })
+    .notNull()
+    .default("none"),
+  contentError: text("content_error"),
 });
 
 export const concepts = sqliteTable(
@@ -58,7 +63,7 @@ export const concepts = sqliteTable(
     // Position on the roadmap: a topological order, so a step never depends on a later one.
     step: integer("step").notNull(),
     addedBySystem: integer("added_by_system", { mode: "boolean" }).notNull(),
-    // Filled lazily the first time the concept page is opened (phase 3).
+    // Filled when the concept's module is first opened. The rubric stays server-side so answers aren't revealed.
     contentJson: text("content_json"),
     rubricJson: text("rubric_json"),
   },
