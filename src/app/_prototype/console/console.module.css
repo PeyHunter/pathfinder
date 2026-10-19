@@ -1,0 +1,1035 @@
+/* PROTOTYPE: throwaway. "Mission control" variant. Everything is scoped under .root. */
+
+/* Registered so the meter fill can animate in (a plain custom property would jump). */
+@property --cm-pct {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+/* Edge fades for the table scroller; registered so keyframes interpolate them. */
+@property --cm-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --cm-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+/* ---------- Tokens + root ---------- */
+
+.root {
+  color-scheme: dark;
+
+  /* Palette: blue-tinted near-black, neutrals with `none` hue, statuses in oklch. */
+  --bg: oklch(0.15 0.02 255);
+  --panel: oklch(0.185 0.025 255);
+  --panel-2: oklch(0.21 0.03 255);
+  --line: oklch(0.32 0.035 255);
+  --fg: oklch(0.92 0.01 255);
+  --dim: oklch(0.64 0.025 255);
+  --off: oklch(0.52 0 none);
+  --ok: oklch(0.86 0.21 145);
+  --warn: oklch(0.82 0.16 75);
+  --bad: oklch(0.68 0.24 355);
+
+  --line-soft: color-mix(in oklch, var(--line) 55%, transparent);
+  --grid: color-mix(in oklch, var(--line) 22%, transparent);
+  --scan: color-mix(in oklch, oklch(0 0 none) 22%, transparent);
+  --glow-ok: color-mix(in oklch, var(--ok) 35%, transparent);
+  --glow-warn: color-mix(in oklch, var(--warn) 30%, transparent);
+  --tint-warn: color-mix(in oklch, var(--warn) 9%, transparent);
+
+  /* One fluid type scale (foundations: "One fluid scale for type and space"). */
+  --narrow: 20;
+  --wide: 90;
+  --size-narrow: 0.875;
+  --size-wide: 0.9375;
+  --ratio-narrow: 1.2;
+  --ratio-wide: 1.25;
+  --fluid: clamp(0rem, (100vw - var(--narrow) * 1rem) / (var(--wide) - var(--narrow)), 1rem);
+  --at-narrow: calc(var(--size-narrow) * (1rem - var(--fluid)));
+  --at-wide: calc(var(--size-wide) * var(--fluid));
+  --step--1: calc(var(--step-0) / var(--ratio-narrow));
+  --step-0: calc(var(--at-narrow) + var(--at-wide));
+  --step-1: calc(var(--at-narrow) * var(--ratio-narrow) + var(--at-wide) * var(--ratio-wide));
+  --step-2: calc(var(--at-narrow) * pow(var(--ratio-narrow), 2) + var(--at-wide) * pow(var(--ratio-wide), 2));
+  --step-3: calc(var(--at-narrow) * pow(var(--ratio-narrow), 3) + var(--at-wide) * pow(var(--ratio-wide), 3));
+  --step-4: calc(var(--at-narrow) * pow(var(--ratio-narrow), 4) + var(--at-wide) * pow(var(--ratio-wide), 4));
+
+  --space-2xs: clamp(0.25rem, 0.2rem + 0.2vw, 0.375rem);
+  --space-xs: clamp(0.5rem, 0.4rem + 0.3vw, 0.75rem);
+  --space-s: clamp(0.75rem, 0.6rem + 0.5vw, 1.125rem);
+  --space-m: clamp(1rem, 0.8rem + 0.9vw, 1.75rem);
+  --space-l: clamp(1.5rem, 1rem + 2vw, 3rem);
+  --gutter: clamp(1rem, 0.6rem + 2vw, 2.5rem);
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --mono: var(--font-cm-mono), ui-monospace, monospace;
+  --head: var(--font-cm-head), var(--font-cm-mono), system-ui, sans-serif;
+
+  min-block-size: 100svh;
+  display: flex;
+  flex-direction: column;
+  padding-block-end: 5rem; /* room for the floating switcher */
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: var(--step-0);
+  line-height: 1.5;
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  background-color: var(--bg);
+  /* Scanlines over a faint grid. */
+  background-image:
+    repeating-linear-gradient(to bottom, transparent 0 2px, var(--scan) 2px 3px),
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: auto, 2.5rem 2.5rem, 2.5rem 2.5rem;
+}
+
+.root :is(h1, h2, h3) {
+  text-wrap: balance;
+}
+
+.root :focus-visible {
+  outline: 2px solid var(--warn);
+  outline-offset: 3px;
+}
+
+.root :is(a, button) {
+  touch-action: manipulation;
+}
+
+/* Status color, set once per element carrying data-status. Locked stays close to not started. */
+.root [data-status] {
+  --c: var(--off);
+}
+.root [data-status="locked"] {
+  --c: color-mix(in oklch, var(--off), var(--bg) 35%);
+}
+.root [data-status="in_progress"] {
+  --c: var(--warn);
+}
+.root [data-status="needs_review"] {
+  --c: var(--bad);
+}
+.root [data-status="mastered"] {
+  --c: var(--ok);
+}
+
+.dim {
+  color: var(--dim);
+}
+.yes {
+  color: var(--ok);
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Top bar, main, footer ---------- */
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs) var(--space-m);
+  padding-block: var(--space-xs);
+  padding-inline: var(--gutter);
+  border-block-end: 1px solid var(--line);
+  background: color-mix(in oklch, var(--panel) 92%, transparent);
+  font-size: var(--step--1);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.brand {
+  font-family: var(--head);
+  font-weight: 700;
+  font-size: var(--step-1);
+  letter-spacing: 0.14em;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.brandMark {
+  color: var(--ok);
+  text-shadow: 0 0 0.6em var(--glow-ok);
+}
+
+.readout {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.led {
+  flex: none;
+  inline-size: 0.6em;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0.5em var(--glow-ok);
+}
+
+/* Push the nav to the far end of the bar. */
+.nav {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-s);
+}
+
+.navLink {
+  color: var(--dim);
+  text-decoration: none;
+  padding-block: 0.4em;
+}
+
+.key {
+  display: inline-block;
+  padding-block: 0.45em;
+  padding-inline: 0.9em;
+  border: 1px solid var(--line);
+  border-block-end-width: 3px;
+  border-radius: 0.3rem;
+  background: var(--panel-2);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.main {
+  flex: 1;
+  container-type: inline-size;
+  display: grid;
+  align-content: start;
+  row-gap: var(--space-l);
+  padding-block: var(--space-l);
+  grid-template-columns:
+    [full-start] minmax(var(--gutter), 1fr)
+    [content-start] min(100% - var(--gutter) * 2, 90rem) [content-end]
+    minmax(var(--gutter), 1fr) [full-end];
+}
+
+.main > * {
+  grid-column: content;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs) var(--space-m);
+  padding-block: var(--space-s);
+  padding-inline: var(--gutter);
+  border-block-start: 1px solid var(--line);
+  font-size: var(--step--1);
+  color: var(--dim);
+}
+
+.footer > :last-child {
+  margin-inline-start: auto;
+}
+
+/* ---------- Shared bits ---------- */
+
+.prompt {
+  color: var(--dim);
+  font-size: var(--step--1);
+}
+
+.ps1 {
+  color: var(--ok);
+}
+
+.str {
+  color: var(--warn);
+}
+
+.cursor {
+  color: var(--ok);
+  margin-inline-start: 0.15em;
+}
+
+.lede {
+  max-inline-size: 62ch;
+  color: var(--dim);
+}
+
+.icon {
+  flex: none;
+  block-size: 1cap;
+  inline-size: auto;
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75em;
+  align-self: start;
+  padding-block: 0.7em;
+  padding-inline: 0.8em 1.1em;
+  border: 1px solid var(--warn);
+  border-block-end-width: 4px;
+  border-radius: 0.35rem;
+  background: color-mix(in oklch, var(--warn) 14%, var(--panel));
+  color: var(--warn);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  box-shadow: 0 0 1.2em var(--glow-warn);
+}
+
+.ctaLabel {
+  text-box: trim-both cap alphabetic;
+}
+
+.kbd {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 1.8em;
+  padding-block: 0.15em;
+  border: 1px solid currentColor;
+  border-radius: 0.2rem;
+  font-family: inherit;
+  font-size: var(--step--1);
+}
+
+.panel {
+  border: 1px solid var(--line);
+  background: color-mix(in oklch, var(--panel) 94%, transparent);
+}
+
+.panelBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-m);
+  padding-block: var(--space-2xs);
+  padding-inline: var(--space-s);
+  border-block-end: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: var(--step--1);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.panelBar > h2 {
+  font-size: inherit;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.panelBar > h2::before {
+  content: "▍";
+  color: var(--ok);
+  margin-inline-end: 0.4em;
+}
+
+.panelBar > :last-child:not(:first-child) {
+  margin-inline-start: auto;
+}
+
+.glyph {
+  color: var(--c, var(--off));
+  font-weight: 700;
+}
+
+/* Meter: the fill is a registered percentage, so it can animate in on load. */
+.meter {
+  display: block;
+  block-size: 0.6rem;
+  inline-size: 100%;
+  border: 1px solid var(--line);
+  background:
+    repeating-linear-gradient(to right, transparent 0 calc(10% - 1px), var(--bg) calc(10% - 1px) 10%),
+    linear-gradient(to right, var(--ok) var(--cm-pct), color-mix(in oklch, var(--off) 25%, transparent) 0);
+  box-shadow: 0 0 0.8em color-mix(in oklch, var(--ok) 15%, transparent);
+}
+
+.segs {
+  display: flex;
+  gap: 2px;
+  inline-size: 100%;
+}
+
+.seg {
+  flex: 1;
+  block-size: 0.55rem;
+  background: color-mix(in oklch, var(--c) 45%, transparent);
+}
+
+.seg:is([data-status="mastered"], [data-status="in_progress"], [data-status="needs_review"]) {
+  background: var(--c);
+  box-shadow: 0 0 0.5em color-mix(in oklch, var(--c) 40%, transparent);
+}
+
+/* ---------- Home ---------- */
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-s);
+  padding-block: var(--space-l);
+}
+
+.heroTitle {
+  font-family: var(--head);
+  font-weight: 700;
+  font-size: var(--step-4);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+.scroller {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  animation: cm-edges linear;
+  animation-timeline: scroll(self inline);
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    oklch(0 0 none) var(--cm-fade-start),
+    oklch(0 0 none) calc(100% - var(--cm-fade-end)),
+    transparent
+  );
+}
+
+@keyframes cm-edges {
+  from {
+    --cm-fade-start: 0px;
+    --cm-fade-end: 2.5rem;
+  }
+  10%,
+  90% {
+    --cm-fade-start: 2.5rem;
+    --cm-fade-end: 2.5rem;
+  }
+  to {
+    --cm-fade-start: 2.5rem;
+    --cm-fade-end: 0px;
+  }
+}
+
+.table {
+  inline-size: 100%;
+  min-inline-size: 46rem;
+  border-collapse: collapse;
+  font-size: var(--step--1);
+  font-variant-numeric: tabular-nums;
+}
+
+.table th {
+  padding-block: var(--space-2xs);
+  padding-inline: var(--space-s);
+  text-align: start;
+  font-weight: 500;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-block-end: 1px solid var(--line);
+}
+
+.table td {
+  padding-block: var(--space-xs);
+  padding-inline: var(--space-s);
+  border-block-end: 1px solid var(--line-soft);
+  white-space: nowrap;
+}
+
+.table .num {
+  text-align: end;
+}
+
+/* Whole row clickable from the title link. */
+.trow {
+  position: relative;
+}
+
+.titleCell {
+  inline-size: 40%;
+  font-family: var(--head);
+  font-size: var(--step-0);
+  font-weight: 600;
+}
+
+.table td.titleCell {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.rowLink {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.rowLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.rowLink:focus-visible {
+  outline: 2px solid transparent;
+}
+
+.trow:has(.rowLink:focus-visible) {
+  outline: 2px solid var(--warn);
+  outline-offset: -2px;
+}
+
+.trow:active {
+  background: var(--tint-warn);
+}
+
+.pstatus {
+  --c: var(--off);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5em;
+  color: var(--c);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pstatus::before {
+  content: "●";
+}
+
+.pstatus[data-path-status="ready"] {
+  --c: var(--ok);
+}
+.pstatus:is([data-path-status="awaiting_confirmation"], [data-path-status="generating"], [data-path-status="normalizing"]) {
+  --c: var(--warn);
+}
+.pstatus[data-path-status="failed"] {
+  --c: var(--bad);
+}
+
+.ascii {
+  white-space: nowrap;
+}
+
+.asciiOn {
+  color: var(--ok);
+  text-shadow: 0 0 0.5em var(--glow-ok);
+}
+
+.asciiOff {
+  color: color-mix(in oklch, var(--off) 55%, transparent);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding-block: var(--space-l);
+  padding-inline: var(--space-m);
+}
+
+.emptyTitle {
+  font-family: var(--head);
+  font-size: var(--step-2);
+  font-weight: 600;
+}
+
+/* ---------- Path dashboard ---------- */
+
+.pathHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.crumb {
+  color: var(--ok);
+  text-decoration: none;
+}
+
+.pathTitle {
+  font-family: var(--head);
+  font-weight: 700;
+  font-size: var(--step-4);
+  line-height: 1.05;
+}
+
+/* KPI tiles: intrinsic grid; each tile is a 3-row subgrid so labels, values and notes line up. */
+.kpis {
+  container: cm-kpis / inline-size;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: var(--space-xs);
+}
+
+.kpi {
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: var(--space-2xs);
+  padding: var(--space-s);
+  border: 1px solid var(--line);
+  border-block-start: 2px solid var(--c, var(--line));
+  background: var(--panel);
+}
+
+.kpi[data-tone="ok"] {
+  --c: var(--ok);
+}
+.kpi[data-tone="warn"] {
+  --c: var(--warn);
+}
+
+.kpiLabel {
+  font-size: var(--step--1);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+}
+
+.kpiValue {
+  align-self: end;
+  font-size: var(--step-3);
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--c, var(--fg));
+}
+
+.kpi[data-wide] .kpiValue {
+  min-inline-size: 0; /* no min-width reset here, so a grid item's minimum is its full nowrap text */
+  font-family: var(--head);
+  font-size: var(--step-2);
+  white-space: nowrap;
+  overflow: clip;
+  text-overflow: ellipsis;
+}
+
+.kpiNote {
+  align-self: center;
+  font-size: var(--step--1);
+  color: var(--dim);
+}
+
+@container cm-kpis (inline-size > 40rem) {
+  .kpi[data-wide] {
+    grid-column: span 2;
+  }
+}
+
+/* NEXT panel. Sidebar pattern: info grows, meter has an ideal width and wraps under on its own. */
+.nextPanel {
+  border-color: var(--warn);
+  box-shadow: 0 0 2rem var(--tint-warn);
+}
+
+.nextPanel .panelBar {
+  background: color-mix(in oklch, var(--warn) 12%, var(--panel-2));
+  color: var(--warn);
+}
+
+.nextPanel .panelBar > h2 {
+  color: var(--warn);
+}
+
+.nextBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-m);
+  padding: var(--space-m);
+}
+
+.nextInfo {
+  flex-basis: 0;
+  flex-grow: 999;
+  min-inline-size: 55%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.nextName {
+  font-family: var(--head);
+  font-size: var(--step-2);
+  font-weight: 600;
+}
+
+.nextMeter {
+  flex-basis: 16rem;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  font-size: var(--step--1);
+  color: var(--dim);
+}
+
+.allClear {
+  flex-basis: 0;
+  flex-grow: 999;
+  min-inline-size: 55%;
+  font-family: var(--head);
+  font-size: var(--step-2);
+  font-weight: 600;
+  color: var(--ok);
+  text-shadow: 0 0 0.8em var(--glow-ok);
+}
+
+.legend {
+  margin-inline-start: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs) var(--space-s);
+  color: var(--dim);
+  letter-spacing: 0.04em;
+}
+
+/* Module status board: intrinsic grid of slots; each slot is a container its module queries. */
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 32rem), 1fr));
+  gap: var(--space-s);
+  padding: var(--space-s);
+}
+
+.slot {
+  container: cm-module / inline-size;
+}
+
+.module {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+/* The module holding the next step lights up amber. */
+.module:has([data-next]) {
+  border-color: color-mix(in oklch, var(--warn) 70%, var(--line));
+  box-shadow: 0 0 1.5rem var(--tint-warn);
+}
+
+.modHead {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-xs) var(--space-s);
+  padding: var(--space-s);
+  border-block-end: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+.modOrder {
+  font-size: var(--step-1);
+  font-weight: 800;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.module:has([data-next]) .modOrder {
+  color: var(--warn);
+}
+
+.modInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.modTitle {
+  font-family: var(--head);
+  font-weight: 600;
+  font-size: clamp(1.05rem, 0.85rem + 2.2cqi, 1.5rem);
+  line-height: 1.2;
+}
+
+.why {
+  color: var(--dim);
+  font-size: var(--step--1);
+}
+
+.modMeta {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs) var(--space-s);
+  font-size: var(--step--1);
+}
+
+.modMeta > .segs {
+  flex: 1 1 8rem;
+}
+
+.modLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding-block: 0.45em;
+  padding-inline: 0.8em;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  background: var(--panel);
+}
+
+/* Wide slot: order, info and a fixed-width meta column side by side. */
+@container cm-module (inline-size > 38rem) {
+  .modHead {
+    grid-template-columns: auto minmax(0, 1fr) 13rem;
+  }
+
+  .modOrder {
+    font-size: var(--step-3);
+  }
+
+  .modMeta {
+    grid-column: auto;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .modMeta > .segs {
+    flex: none;
+  }
+
+  .modLink {
+    justify-content: center;
+  }
+}
+
+/* Concept log rows. */
+.log {
+  display: flex;
+  flex-direction: column;
+  padding-block: var(--space-2xs);
+}
+
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 4.5ch 1.5ch minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 0.6ch;
+  padding-block: var(--space-2xs);
+  padding-inline: var(--space-s);
+  border-inline-start: 2px solid transparent;
+  font-size: var(--step--1);
+}
+
+.row + .row {
+  border-block-start: 1px dashed var(--line-soft);
+}
+
+.row[data-next] {
+  border-inline-start-color: var(--warn);
+  background: var(--tint-warn);
+}
+
+.row:has(.name:focus-visible) {
+  outline: 2px solid var(--warn);
+  outline-offset: -2px;
+}
+
+.row:active {
+  background: color-mix(in oklch, var(--warn) 14%, transparent);
+}
+
+.step {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.rowMain {
+  display: grid;
+  gap: 0.15em;
+}
+
+.rowHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25em 0.75em;
+}
+
+.name {
+  color: var(--fg);
+  font-weight: 600;
+  font-size: var(--step-0);
+  text-decoration: none;
+}
+
+.row[data-status="locked"] .name,
+.row[data-status="available"] .name {
+  color: color-mix(in oklch, var(--fg) 82%, var(--bg));
+}
+
+/* Whole row clickable from the concept name. */
+.name::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.name:focus-visible {
+  outline: 2px solid transparent;
+}
+
+.state {
+  color: var(--c);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.85em;
+}
+
+.tag,
+.nextTag {
+  padding-inline: 0.5em;
+  border: 1px solid var(--line);
+  border-radius: 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.85em;
+  color: var(--dim);
+}
+
+.nextTag {
+  border-color: var(--warn);
+  color: var(--bg);
+  background: var(--warn);
+  font-weight: 700;
+}
+
+.summary {
+  color: var(--dim);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: clip;
+}
+
+.summary::before {
+  content: "— ";
+}
+
+.req {
+  color: color-mix(in oklch, var(--dim) 75%, var(--bg));
+  font-size: 0.9em;
+}
+
+/* Wide slot: name line and summary sit side by side like a log line. */
+@container cm-module (inline-size > 46rem) {
+  .rowMain {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    column-gap: var(--space-s);
+  }
+
+  .req {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---------- Hover (fine pointers only) ---------- */
+
+@media (hover: hover) and (pointer: fine) {
+  .navLink:hover,
+  .brand:hover {
+    color: var(--ok);
+  }
+
+  .key:hover {
+    border-color: var(--ok);
+    color: var(--ok);
+  }
+
+  .cta:hover {
+    background: color-mix(in oklch, var(--warn) 24%, var(--panel));
+  }
+
+  .modLink:hover {
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+
+  .trow:hover {
+    background: color-mix(in oklch, var(--ok) 6%, transparent);
+  }
+
+  .trow:hover .rowLink,
+  .row:hover .name {
+    color: var(--ok);
+  }
+
+  .row:hover {
+    background: color-mix(in oklch, var(--fg) 5%, transparent);
+  }
+
+  .row[data-next]:hover {
+    background: color-mix(in oklch, var(--warn) 14%, transparent);
+  }
+
+  .crumb:hover {
+    text-decoration: underline;
+  }
+}
+
+/* ---------- Press states ---------- */
+
+.key:active,
+.cta:active,
+.modLink:active {
+  scale: 0.97;
+}
+
+.brand:active,
+.navLink:active,
+.crumb:active {
+  opacity: 0.7;
+}
+
+/* ---------- Motion (opt-in only) ---------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  .key,
+  .cta,
+  .modLink {
+    transition:
+      scale 140ms var(--ease-out),
+      background-color 160ms var(--ease-out),
+      border-color 160ms var(--ease-out),
+      color 160ms var(--ease-out);
+  }
+
+  .meter {
+    animation: cm-fill 900ms var(--ease-out) both;
+  }
+
+  .cursor {
+    animation: cm-blink 1.1s steps(1, end) infinite;
+  }
+}
+
+@keyframes cm-fill {
+  from {
+    --cm-pct: 0%;
+  }
+}
+
+@keyframes cm-blink {
+  50% {
+    opacity: 0;
+  }
+}

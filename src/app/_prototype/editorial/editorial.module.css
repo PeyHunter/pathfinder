@@ -1,0 +1,822 @@
+/* PROTOTYPE: throwaway. Broadsheet: newspaper / literary magazine. Everything is scoped under .root. */
+
+/* Anchor offset lives on the scroll container (html); .root inherits the same token for the sticky contents. */
+:global(html):has(.root) {
+  --anchor-offset: 2rem;
+  scroll-padding-block-start: var(--anchor-offset);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :global(html):has(.root) { scroll-behavior: smooth; }
+}
+
+/* ---------- Tokens ---------- */
+
+.root {
+  color-scheme: light dark;
+  interpolate-size: allow-keywords;
+
+  /* Paper and ink are warm, so they carry a hue; derived tones come from color-mix. */
+  --paper: light-dark(oklch(96.8% 0.012 85), oklch(18.5% 0.008 75));
+  --ink: light-dark(oklch(19% 0.012 70), oklch(91% 0.014 85));
+  --spot: light-dark(oklch(52% 0.19 33), oklch(68% 0.17 36));
+  --black: oklch(0% 0 none);
+  --ink-2: color-mix(in oklch, var(--ink) 74%, var(--paper));
+  --ink-3: color-mix(in oklch, var(--ink) 55%, var(--paper));
+  --rule: color-mix(in oklch, var(--ink) 28%, var(--paper));
+  --tint: color-mix(in oklch, var(--spot) 7%, var(--paper));
+  --spot-press: color-mix(in oklch, var(--spot), var(--black) 20%);
+  --hair: 1px solid var(--rule);
+  --heavy: 3px double var(--ink);
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* One fluid scale. Top step used is 6: (1.1875/1.0625) * (1.333/1.2)^6 = 2.10, under the 2.5 zoom limit. */
+  --narrow: 20;
+  --wide: 80;
+  --size-narrow: 1.0625;
+  --size-wide: 1.1875;
+  --ratio-narrow: 1.2;
+  --ratio-wide: 1.333;
+  --fluid: clamp(0rem, (100vw - var(--narrow) * 1rem) / (var(--wide) - var(--narrow)), 1rem);
+  --at-narrow: calc(var(--size-narrow) * (1rem - var(--fluid)));
+  --at-wide: calc(var(--size-wide) * var(--fluid));
+
+  --step--2: calc(var(--step-0) / pow(var(--ratio-narrow), 2));
+  --step--1: calc(var(--step-0) / var(--ratio-narrow));
+  --step-0: calc(var(--at-narrow) + var(--at-wide));
+  --step-1: calc(var(--at-narrow) * var(--ratio-narrow) + var(--at-wide) * var(--ratio-wide));
+  --step-2: calc(var(--at-narrow) * pow(var(--ratio-narrow), 2) + var(--at-wide) * pow(var(--ratio-wide), 2));
+  --step-3: calc(var(--at-narrow) * pow(var(--ratio-narrow), 3) + var(--at-wide) * pow(var(--ratio-wide), 3));
+  --step-4: calc(var(--at-narrow) * pow(var(--ratio-narrow), 4) + var(--at-wide) * pow(var(--ratio-wide), 4));
+  --step-5: calc(var(--at-narrow) * pow(var(--ratio-narrow), 5) + var(--at-wide) * pow(var(--ratio-wide), 5));
+  --step-6: calc(var(--at-narrow) * pow(var(--ratio-narrow), 6) + var(--at-wide) * pow(var(--ratio-wide), 6));
+
+  --space-3xs: calc(0.25 * var(--step-0));
+  --space-2xs: calc(0.5 * var(--step-0));
+  --space-xs: calc(0.75 * var(--step-0));
+  --space-s: var(--step-0);
+  --space-m: calc(1.5 * var(--step-0));
+  --space-l: calc(2 * var(--step-0));
+  --space-xl: calc(3 * var(--step-0));
+  /* A pair, steep on purpose: section padding only, never a font size. */
+  --space-l-2xl: calc(2 * var(--at-narrow) + 4 * var(--at-wide));
+
+  --display: var(--font-display), "Times New Roman", serif;
+  --body: var(--font-body), Georgia, serif;
+
+  min-block-size: 100svh;
+  padding-block-end: 5rem; /* room for the floating switcher */
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: var(--step-0);
+  line-height: 1.5;
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+  /* Weight and style only: keep small-caps synthesis for fonts without real small caps. */
+  font-synthesis-weight: none;
+  font-synthesis-style: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.root *,
+.root *::before,
+.root *::after { min-inline-size: 0; }
+
+.root :is(h1, h2, h3) { text-wrap: balance; }
+
+.root :is(p, h1, h2, h3, ol, ul, blockquote) { margin-block: 0; }
+
+/* ---------- Links, focus, press ---------- */
+
+.root a {
+  color: inherit;
+  text-decoration-line: none;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  text-decoration-color: var(--spot);
+  transition: color 160ms var(--ease-out);
+}
+
+.root a:active { color: var(--spot-press); }
+
+.root :focus-visible {
+  outline: 2px solid var(--spot);
+  outline-offset: 0.2em;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .root a:hover { text-decoration-line: underline; }
+}
+
+/* ---------- Content grid with breakouts ---------- */
+
+.contentGrid {
+  --gutter: var(--space-m);
+  --content: 46rem;
+  --breakout: 78rem;
+  display: grid;
+  grid-template-columns:
+    [full-width-start] minmax(var(--gutter), 1fr)
+    [breakout-start] minmax(0, calc((var(--breakout) - var(--content)) / 2))
+    [content-start] min(100% - var(--gutter) * 2, var(--content)) [content-end]
+    minmax(0, calc((var(--breakout) - var(--content)) / 2)) [breakout-end]
+    minmax(var(--gutter), 1fr) [full-width-end];
+}
+
+.contentGrid > * { grid-column: content; }
+.contentGrid > .breakout { grid-column: breakout; }
+
+/* ---------- Shared type bits ---------- */
+
+.kicker {
+  color: var(--spot);
+  font-size: var(--step--1);
+  font-weight: 600;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+}
+
+.smallCaps {
+  font-variant-caps: all-small-caps;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.nums { font-variant-numeric: tabular-nums; }
+
+/* Drop cap: the float is the fallback, initial-letter takes over where supported. */
+.dropCap::first-letter,
+.chapter:first-of-type .intro::first-letter {
+  float: inline-start;
+  margin-inline-end: 0.08em;
+  margin-block-start: 0.04em;
+  color: var(--spot);
+  font-family: var(--display);
+  font-size: 3.7em;
+  line-height: 0.78;
+}
+
+@supports (initial-letter: 3) {
+  .dropCap::first-letter,
+  .chapter:first-of-type .intro::first-letter {
+    float: none;
+    initial-letter: 3;
+    margin-block-start: 0;
+    font-size: inherit;
+    line-height: inherit;
+  }
+}
+
+.meter {
+  position: relative;
+  display: block;
+  block-size: 3px;
+  margin-block-start: var(--space-2xs);
+  background: var(--rule);
+}
+
+.meter::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: var(--pct, 0%);
+  background: var(--spot);
+}
+
+.cta {
+  display: inline-block;
+  align-self: start;
+  padding-block: 0.95em;
+  padding-inline: 1.3em;
+  background: var(--spot);
+  color: var(--paper);
+  font-size: var(--step--1);
+  font-weight: 600;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.1em;
+  text-box: trim-both cap alphabetic;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.root .cta { transition: background-color 160ms var(--ease-out); }
+
+.root .cta { color: var(--paper); text-decoration-line: none; }
+.root .cta:active { background: var(--spot-press); color: var(--paper); transform: scale(0.97); }
+
+@media (hover: hover) and (pointer: fine) {
+  .root .cta:hover { background: color-mix(in oklch, var(--spot), var(--black) 10%); text-decoration-line: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .root .cta { transition: background-color 160ms var(--ease-out), transform 160ms var(--ease-out); }
+}
+
+/* ---------- Masthead and footer ---------- */
+
+.masthead {
+  padding-block: var(--space-s) 0;
+  border-block-end: var(--heavy);
+}
+
+.ears {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2xs) var(--space-m);
+  padding-block-end: var(--space-2xs);
+  border-block-end: var(--hair);
+  color: var(--ink-2);
+  font-size: var(--step--1);
+}
+
+.dateline { font-style: italic; font-variant-numeric: tabular-nums; }
+
+.mastNav {
+  display: flex;
+  gap: var(--space-m);
+  margin-inline-start: auto; /* pushed to the far end of the row */
+  font-weight: 600;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.08em;
+}
+
+.nameplate {
+  padding-block: var(--space-xs);
+  font-family: var(--display);
+  font-size: var(--step-5);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  text-align: center;
+}
+
+.masthead[data-compact] .nameplate { font-size: var(--step-3); }
+
+.tagline {
+  padding-block: var(--space-2xs);
+  border-block-start: var(--hair);
+  font-style: italic;
+  text-align: center;
+  color: var(--ink-2);
+}
+
+.tagline > span {
+  margin-inline-start: var(--space-xs);
+  color: var(--spot);
+  font-style: normal;
+  font-weight: 600;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.08em;
+}
+
+.footer {
+  margin-block-start: var(--space-l-2xl);
+  padding-block: var(--space-m);
+  border-block-start: var(--heavy);
+  color: var(--ink-3);
+  font-size: var(--step--1);
+  font-style: italic;
+  text-align: center;
+}
+
+.footer a { text-decoration-line: underline; }
+
+.page { padding-block-start: var(--space-l); }
+
+/* ---------- Whole story clickable from its headline link ---------- */
+
+.lead,
+.story,
+.entry { position: relative; }
+
+.storyLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.root .storyLink:focus-visible { outline: 2px solid transparent; }
+
+:is(.lead, .story, .entry):has(.storyLink:focus-visible) {
+  outline: 2px solid var(--spot);
+  outline-offset: 0.4em;
+}
+
+.raised {
+  position: relative;
+  z-index: 1;
+}
+
+.more {
+  color: var(--spot);
+  font-weight: 600;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.08em;
+}
+
+.more [aria-hidden] { display: inline-block; }
+
+.story:active .storyHead,
+.lead:active .leadHead,
+.entry:active .entryHead { color: var(--spot-press); }
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.lead, .story, .entry):hover .storyLink {
+    text-decoration-line: underline;
+    text-decoration-thickness: 2px;
+  }
+
+  :is(.lead, .story):hover .more [aria-hidden] { translate: 0.25em 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .more [aria-hidden] { transition: translate 200ms var(--ease-out); }
+}
+
+/* ---------- Home: front page ---------- */
+
+/* Sidebar that wraps on its own: lead story + the boxed call to action. */
+.front {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-l);
+  padding-block-end: var(--space-l);
+  border-block-end: var(--hair);
+}
+
+.leadSlot {
+  flex-basis: 0;
+  flex-grow: 999;
+  min-inline-size: 60%;
+  container-type: inline-size;
+}
+
+.frontSide {
+  flex-basis: 16rem;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-m);
+}
+
+.lead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-s);
+}
+
+.leadHead {
+  font-family: var(--display);
+  font-size: var(--step-5);
+  font-weight: 400;
+  line-height: 0.98;
+  letter-spacing: -0.015em;
+}
+
+.leadBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-s);
+  font-size: var(--step-1);
+  line-height: 1.45;
+}
+
+/* The lead responds to its own slot, not the viewport: wide slot, bigger headline and two text columns. */
+@container (width > 38rem) {
+  .leadHead { font-size: var(--step-6); }
+
+  .leadBody {
+    display: block;
+    columns: 2;
+    column-gap: var(--space-l);
+    column-rule: var(--hair);
+  }
+
+  .leadBody > * + * { margin-block-start: var(--space-s); }
+  .leadBody > * { break-inside: avoid; }
+}
+
+.standing {
+  color: var(--ink-2);
+  font-size: var(--step--1);
+}
+
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding-block: var(--space-m);
+  padding-inline: var(--space-m);
+  border-block: 1px solid var(--ink);
+  border-inline: 1px solid var(--ink);
+  outline: 1px solid var(--ink); /* second rule of the boxed ad */
+  outline-offset: 3px;
+  margin-block: 4px;
+  margin-inline: 4px;
+  background: var(--tint);
+}
+
+.boxHead {
+  font-family: var(--display);
+  font-size: var(--step-3);
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1;
+}
+
+.index {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2xs);
+  padding-block: var(--space-2xs);
+  border-block: var(--hair);
+  color: var(--ink-2);
+  font-size: var(--step--1);
+}
+
+.columns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-m);
+  padding-block-start: var(--space-l);
+}
+
+.sectionRule {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-s);
+  font-size: var(--step--1);
+  font-weight: 600;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.12em;
+}
+
+.sectionRule::before,
+.sectionRule::after {
+  content: "";
+  border-block-start: var(--hair);
+}
+
+/* Column stories: each spans 4 subgrid rows so kicker, headline, standing and link line up across a row. */
+.storyGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: var(--space-l);
+}
+
+.story {
+  display: grid;
+  grid-row: span 4;
+  grid-template-rows: subgrid;
+  row-gap: var(--space-2xs);
+  padding-block-start: var(--space-s);
+  border-block-start: 2px solid var(--ink);
+}
+
+.storyHead {
+  font-family: var(--display);
+  font-size: var(--step-2);
+  font-weight: 400;
+  line-height: 1.05;
+}
+
+/* ---------- Path: the article ---------- */
+
+.articleHead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-s);
+  padding-block-end: var(--space-l);
+  text-align: center;
+}
+
+.headline {
+  font-family: var(--display);
+  font-size: var(--step-5);
+  font-weight: 400;
+  line-height: 0.98;
+  letter-spacing: -0.015em;
+}
+
+.standfirst {
+  max-inline-size: 36ch;
+  color: var(--ink-2);
+  font-size: var(--step-1);
+  font-style: italic;
+  line-height: 1.35;
+}
+
+.byline {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 var(--space-s);
+  inline-size: min(100%, 26rem);
+  color: var(--ink-2);
+  font-size: var(--step--1);
+}
+
+.byline > .meter { flex-basis: 100%; }
+
+.finished {
+  color: var(--spot);
+  font-family: var(--display);
+  font-size: var(--step-2);
+  font-style: italic;
+  line-height: 1.1;
+}
+
+/* Sidebar that wraps on its own. It is the container the contents box queries for stickiness. */
+.articleBody {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-l);
+  padding-block-start: var(--space-m);
+  border-block-start: var(--heavy);
+  container-type: inline-size;
+}
+
+.toc {
+  flex-basis: 14rem;
+  flex-grow: 1;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-s);
+  font-size: var(--step--1);
+}
+
+/* Side by side the pair needs about (14rem + gap) / 0.4 = 41rem, so stick only past that.
+   Stacked above the chapters, a sticky contents box would cover the text. */
+@container (width > 44rem) {
+  .toc {
+    position: sticky;
+    inset-block-start: var(--anchor-offset);
+    max-block-size: calc(100dvh - 2 * var(--anchor-offset));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+.toc h2 {
+  padding-block-end: var(--space-3xs);
+  border-block-end: 2px solid var(--ink);
+  font-size: var(--step--1);
+}
+
+.toc ol {
+  padding-inline-start: 0;
+  list-style: none;
+}
+
+.toc ol a {
+  display: grid;
+  grid-template-columns: 2.5ch 1fr auto;
+  align-items: baseline;
+  gap: var(--space-2xs);
+  padding-block: var(--space-2xs);
+  border-block-end: var(--hair);
+}
+
+.tocNum {
+  color: var(--spot);
+  font-family: var(--display);
+  font-size: var(--step-1);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.tocCount {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.toc li[data-current] a { background: var(--tint); }
+.toc li[data-current] .tocTitle { font-weight: 600; }
+
+.toc li[data-current] .tocCount::after {
+  content: " ▸";
+  color: var(--spot);
+}
+
+.chapters {
+  flex-basis: 0;
+  flex-grow: 999;
+  min-inline-size: 60%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+/* Flow spacing set by the parent: no child carries its own block margin. */
+.chapter > * + * { margin-block-start: var(--flow-space, var(--space-s)); }
+.chapter > .chapterHead + * { --flow-space: var(--space-m); }
+.chapter > .entries { --flow-space: var(--space-m); }
+
+.chapter:not(:first-of-type) {
+  padding-block-start: var(--space-l);
+  border-block-start: var(--hair);
+}
+
+.chapterHead {
+  font-family: var(--display);
+  font-size: var(--step-4);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.pullQuote {
+  padding-inline-start: var(--space-m);
+  border-inline-start: 3px solid var(--spot);
+  font-family: var(--display);
+  font-size: var(--step-2);
+  font-style: italic;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.pullQuote p::before { content: open-quote; color: var(--spot); }
+.pullQuote p::after { content: close-quote; color: var(--spot); }
+
+.intro {
+  max-inline-size: 65ch;
+  color: var(--ink-2);
+}
+
+.inline {
+  color: var(--spot);
+  white-space: nowrap;
+}
+
+.root .inline { text-decoration-line: underline; }
+
+/* Numbered entries flow in newspaper columns with a hairline column rule. */
+.entries {
+  padding-inline-start: 0;
+  list-style: none;
+  columns: 15rem 2;
+  column-gap: var(--space-l);
+  column-rule: var(--hair);
+}
+
+.entry {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: var(--space-xs);
+  row-gap: var(--space-3xs);
+  padding-block: var(--space-s);
+  padding-inline: var(--space-2xs);
+  border-block-start: var(--hair);
+  break-inside: avoid;
+}
+
+.entry > :not(.step) { grid-column: 2; }
+
+.step {
+  grid-row: 1 / span 4;
+  min-inline-size: 2ch;
+  color: var(--spot);
+  font-family: var(--display);
+  font-size: var(--step-3);
+  line-height: 0.9;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.entryHead {
+  font-size: var(--step-0);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.mark {
+  margin-inline-start: 0.15em;
+  color: var(--spot);
+  font-size: 0.7em;
+}
+
+/* Full text is on the concept page, so the summary may clamp. */
+.summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: clip;
+  color: var(--ink-2);
+  font-size: var(--step--1);
+  line-height: 1.45;
+}
+
+.entryMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-xs);
+  color: var(--ink-3);
+  font-size: var(--step--1);
+}
+
+.entry[data-status="mastered"] .step { color: var(--ink-3); }
+.entry[data-status="mastered"] .entryMeta > :first-child { color: var(--ink); }
+.entry:is([data-status="in_progress"], [data-status="needs_review"]) .entryMeta > :first-child { color: var(--spot); }
+
+/* The next-up entry is found by what it contains, no extra class from the template. */
+.entry:has([aria-current="step"]) {
+  border-inline-start: 3px solid var(--spot);
+  background: var(--tint);
+}
+
+.readNext {
+  color: var(--spot);
+  font-family: var(--display);
+  font-size: var(--step-1);
+  font-style: italic;
+  line-height: 1.1;
+}
+
+.footnote {
+  color: var(--ink-3);
+  font-size: var(--step--1);
+  font-style: italic;
+}
+
+/* ---------- Colophon accordion ---------- */
+
+.colophon {
+  border-block: var(--hair);
+}
+
+.colophon summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  padding-block: var(--space-s);
+  list-style: none;
+  cursor: pointer;
+  font-family: var(--display);
+  font-size: var(--step-2);
+  font-style: italic;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.colophon summary::-webkit-details-marker { display: none; }
+
+.colophon summary .smallCaps {
+  color: var(--spot);
+  font-family: var(--body);
+  font-size: var(--step--1);
+  font-style: normal;
+}
+
+.colophon summary::after {
+  content: "+";
+  margin-inline-start: auto;
+  color: var(--spot);
+  font-style: normal;
+}
+
+.colophon[open] summary::after { content: "−"; }
+
+.colophon summary:active { color: var(--spot-press); }
+
+@media (hover: hover) and (pointer: fine) {
+  .colophon summary:hover { color: var(--spot); }
+}
+
+.colophon::details-content {
+  block-size: 0;
+  overflow: clip;
+}
+
+.colophon[open]::details-content { block-size: auto; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .colophon::details-content {
+    transition:
+      block-size 0.3s var(--ease-out),
+      content-visibility 0.3s allow-discrete;
+  }
+}
+
+/* Padding lives on the inner element, never on ::details-content. */
+.colophonBody {
+  padding-block-end: var(--space-m);
+  color: var(--ink-2);
+  font-size: var(--step--1);
+}
+
+.colophonBody > * + * { margin-block-start: var(--space-2xs); }
+
+.colophonBody ul {
+  padding-inline-start: var(--space-m);
+  list-style: square;
+}
+
+.colophonBody li::marker { color: var(--spot); }

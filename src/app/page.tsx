@@ -4,13 +4,24 @@ import { ProgressBar } from "@/components/status";
 import { ButtonLink, Section } from "@/components/ui";
 import { getPathProgress } from "@/lib/learning-service";
 import { listPaths } from "@/lib/path-service";
+import { pickVariant, Switcher } from "./_prototype/variants";
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
+export default async function Home({ searchParams }: PageProps<"/">) {
   const all = listPaths().reverse();
+  // PROTOTYPE: ?variant= swaps in a visual direction; without it the page renders as before.
+  const v = await pickVariant(searchParams);
+  if (v)
+    return (
+      <>
+        <v.Home paths={all.map((p) => ({ ...p, progress: p.status === "ready" ? getPathProgress(p.id) : null }))} />
+        <Switcher current={v.key} />
+      </>
+    );
   return (
     <>
+      <Switcher current="" />
       <Section className="text-center animate-rise">
         <h1 className="text-5xl md:text-7xl font-semibold text-ink">Learn anything.<br />One step at a time.</h1>
         <p className="mx-auto mt-6 max-w-xl text-[21px] md:text-2xl leading-snug text-ink-2">

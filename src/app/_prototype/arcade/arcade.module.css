@@ -1,0 +1,1161 @@
+/* PROTOTYPE: throwaway. "Level select": chunky, game-like, every world in its own hue.
+   Everything is scoped under .root; tokens live on .root (not :root) so nothing leaks into the app. */
+
+/* ---------- registered properties (global names, so prefixed) ---------- */
+
+/* The XP fill animates from 0 to its value because the property is typed. */
+@property --arcade-xp {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+/* Carousel edge fades: typed lengths so the scroll timeline can interpolate them. */
+@property --arcade-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --arcade-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+/* ---------- tokens, base ---------- */
+
+.root {
+  color-scheme: light dark;
+
+  /* One fluid scale for type and space (foundations.md). Inputs are plain numbers for Firefox. */
+  --narrow: 20;
+  --wide: 80;
+  --size-narrow: 1.0625;
+  --size-wide: 1.1875;
+  --ratio-narrow: 1.2;
+  --ratio-wide: 1.333;
+  --fluid: clamp(0rem, (100vw - var(--narrow) * 1rem) / (var(--wide) - var(--narrow)), 1rem);
+  --at-narrow: calc(var(--size-narrow) * (1rem - var(--fluid)));
+  --at-wide: calc(var(--size-wide) * var(--fluid));
+  --step--1: calc(var(--step-0) / var(--ratio-narrow));
+  --step-0: calc(var(--at-narrow) + var(--at-wide));
+  --step-1: calc(var(--at-narrow) * var(--ratio-narrow) + var(--at-wide) * var(--ratio-wide));
+  --step-2: calc(var(--at-narrow) * pow(var(--ratio-narrow), 2) + var(--at-wide) * pow(var(--ratio-wide), 2));
+  --step-3: calc(var(--at-narrow) * pow(var(--ratio-narrow), 3) + var(--at-wide) * pow(var(--ratio-wide), 3));
+  --step-4: calc(var(--at-narrow) * pow(var(--ratio-narrow), 4) + var(--at-wide) * pow(var(--ratio-wide), 4));
+  --step-5: calc(var(--at-narrow) * pow(var(--ratio-narrow), 5) + var(--at-wide) * pow(var(--ratio-wide), 5));
+  /* Top step check: (1.1875/1.0625) * (1.333/1.2)^5 = 1.89, under the 2.5 zoom limit. */
+
+  --space-2xs: calc(0.25 * var(--step-0));
+  --space-xs: calc(0.5 * var(--step-0));
+  --space-s: var(--step-0);
+  --space-m: calc(1.5 * var(--step-0));
+  --space-l: calc(2 * var(--step-0));
+  --space-xl: calc(3 * var(--step-0));
+  --space-section: clamp(2.5rem, 1.5rem + 4vw, 5rem);
+
+  /* Page frame: content grid with breakouts (layout.md). */
+  --gutter: clamp(1rem, 0.5rem + 2vw, 2rem);
+  --content: 68rem;
+  --breakout: 80rem;
+  /* % resolves where it is used: the inset that lines a full-width row up with the content column. */
+  --edge-pad: max(var(--gutter), (100% - var(--content)) / 2);
+
+  /* Color: neutrals with a `none` hue, the rest derived with color-mix. */
+  --paper: light-dark(oklch(0.975 0.018 95), oklch(0.2 0.035 285));
+  --card: light-dark(oklch(1 0 none), oklch(0.27 0.04 285));
+  --ink: light-dark(oklch(0.24 0.045 285), oklch(0.97 0.012 95));
+  --ink-2: color-mix(in oklch, var(--ink) 72%, var(--paper));
+  --ink-3: color-mix(in oklch, var(--ink) 50%, var(--paper));
+  --edge: light-dark(oklch(0.24 0.045 285), oklch(0.08 0.02 285));
+  --dot: color-mix(in oklch, var(--ink) 8%, transparent);
+  --cta: oklch(0.7 0.21 350);
+  --cta-hover: color-mix(in oklch, var(--cta), white 12%);
+  --on-cta: oklch(0.18 0.05 350);
+  --gold: oklch(0.85 0.17 88);
+  --gold-ink: oklch(0.3 0.08 70);
+  --alert: oklch(0.7 0.19 40);
+  --focus: light-dark(oklch(0.5 0.25 265), oklch(0.85 0.15 200));
+
+  /* Shape: thick borders, big radii, hard offset "sticker" shadows. */
+  --bw: 0.1875rem;
+  --lift: 0.3rem;
+  --lift-l: 0.5rem;
+  --r-chip: 0.5rem;
+  --tpad: 0.625rem;
+  --r-tile: calc(var(--r-chip) + var(--tpad));
+  --pad: 0.75rem;
+  --r-card: calc(var(--r-tile) + var(--pad));
+
+  /* Motion tokens (motion.md). The bounce is a linear() spring for releases; press uses ease-out. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-bounce: linear(0, 0.24 7%, 0.68 16%, 1.05 27%, 1.13 34%, 1.1 41%, 1.02 52%, 0.98 63%, 1 80%, 1);
+
+  --font-display: var(--font-arcade-display), ui-rounded, system-ui, sans-serif;
+  --font-body: var(--font-arcade-body), ui-rounded, system-ui, sans-serif;
+
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100svh;
+  padding-block-end: 5rem; /* room for the floating switcher */
+  background:
+    radial-gradient(var(--dot) 0.09rem, transparent 0.1rem) 0 0 / 1.25rem 1.25rem,
+    var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--step-0);
+  font-weight: 500;
+  line-height: 1.5;
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.root * { min-inline-size: 0; }
+
+.root :is(h1, h2, h3) {
+  font-family: var(--font-display);
+  text-wrap: balance;
+  line-height: 1.05;
+}
+
+.root a { touch-action: manipulation; }
+
+.root :focus-visible {
+  outline: max(3px, 0.1em) solid var(--focus);
+  outline-offset: 0.2em;
+}
+
+.srOnly {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: clip;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Per-world hue: --i comes in through a style prop; every color of the world derives from it. */
+.hued,
+.hero {
+  --hue: calc(var(--i, 5) * 57 + 20);
+  --tint: oklch(0.76 0.16 var(--hue));
+  --on-tint: oklch(0.22 0.06 var(--hue));
+  --surface: light-dark(oklch(0.93 0.06 var(--hue)), oklch(0.31 0.07 var(--hue)));
+  --tile: light-dark(oklch(0.995 0.015 var(--hue)), oklch(0.24 0.05 var(--hue)));
+  --hue-ink: light-dark(oklch(0.3 0.1 var(--hue)), oklch(0.93 0.05 var(--hue)));
+  --hue-edge: light-dark(color-mix(in oklch, var(--tint), black 55%), oklch(0.12 0.04 var(--hue)));
+}
+
+/* Icon sized by the text beside it (text-and-media.md): 1cap tall, baseline aligned. */
+:is(.footer p, .worldCount, .mapHint, .allClear, .sticker, .cartGo, .cleared) {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+}
+
+:is(.footer p, .worldCount, .mapHint, .allClear, .sticker, .cartGo, .cleared) > svg {
+  flex: none;
+  block-size: 1cap;
+  inline-size: auto;
+}
+
+/* ---------- chrome ---------- */
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-s);
+  padding-block: var(--space-s);
+  padding-inline: var(--edge-pad);
+}
+
+/* Push one item away with an auto margin (spacing-and-shape.md). */
+.nav > :last-child { margin-inline-start: auto; }
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-family: var(--font-display);
+  font-size: var(--step-1);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: inherit;
+  text-decoration: none;
+}
+
+.brandMark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  inline-size: 1.6em;
+  block-size: 1.6em;
+  border: var(--bw) solid var(--edge);
+  border-radius: 0.5em;
+  background: var(--gold);
+  color: var(--gold-ink);
+  box-shadow: 0 0.15em 0 var(--edge);
+  rotate: -8deg;
+}
+
+.brandMark > svg { inline-size: 65%; }
+
+.brand:active { scale: 0.96; }
+
+.footer {
+  margin-block-start: auto; /* footer sits at the bottom of a short page */
+  padding-block: var(--space-xl) var(--space-s);
+  padding-inline: var(--edge-pad);
+  color: var(--ink-3);
+  font-size: var(--step--1);
+}
+
+.footer svg { color: var(--gold); }
+
+/* Content grid with breakouts: main is the only container; children choose a width. */
+.page {
+  display: grid;
+  row-gap: var(--space-section);
+  padding-block: var(--space-m) var(--space-l);
+  grid-template-columns:
+    [full-width-start] minmax(var(--gutter), 1fr)
+    [breakout-start] minmax(0, calc((var(--breakout) - var(--content)) / 2))
+    [content-start] min(100% - var(--gutter) * 2, var(--content)) [content-end]
+    minmax(0, calc((var(--breakout) - var(--content)) / 2)) [breakout-end]
+    minmax(var(--gutter), 1fr) [full-width-end];
+}
+
+.page > * { grid-column: content; }
+.page > :is(.hero, .hud) { grid-column: breakout; }
+
+.page > .map {
+  grid-column: full-width;
+  display: grid;
+  grid-template-columns: inherit;
+  row-gap: var(--space-s);
+}
+
+.map > * { grid-column: content; }
+.map > .carousel { grid-column: full-width; }
+
+/* ---------- buttons ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55em;
+  padding-block: 0.95em;
+  padding-inline: 1.4em;
+  border: var(--bw) solid var(--edge);
+  border-radius: 999px;
+  background: var(--cta);
+  color: var(--on-cta);
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  box-shadow: 0 var(--lift) 0 var(--edge);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Label centered on its letters (text-and-media.md); the icon matches the trimmed cap height. */
+.btn > span { text-box: trim-both cap alphabetic; }
+
+.btn > svg {
+  flex: none;
+  block-size: 1cap;
+  inline-size: auto;
+}
+
+/* Press: scale down and sink into the shadow. */
+.btn:active {
+  scale: 0.96;
+  translate: 0 calc(var(--lift) / 2);
+  box-shadow: 0 calc(var(--lift) / 2) 0 var(--edge);
+}
+
+.btnBig {
+  font-size: var(--step-1);
+  --lift: 0.45rem;
+}
+
+.btnSmall {
+  font-size: var(--step--1);
+  padding-block: 0.8em;
+  padding-inline: 1.1em;
+  --lift: 0.2rem;
+}
+
+.btnHue {
+  background: var(--tint);
+  color: var(--on-tint);
+  border-color: var(--hue-edge);
+  box-shadow: 0 var(--lift) 0 var(--hue-edge);
+}
+
+.btnHue:active { box-shadow: 0 calc(var(--lift) / 2) 0 var(--hue-edge); }
+
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover {
+    background: var(--cta-hover);
+    translate: 0 -0.125rem;
+    box-shadow: 0 calc(var(--lift) + 0.125rem) 0 var(--edge);
+  }
+
+  .btnHue:hover {
+    background: color-mix(in oklch, var(--tint), white 15%);
+    box-shadow: 0 calc(var(--lift) + 0.125rem) 0 var(--hue-edge);
+  }
+
+  .btn:active {
+    translate: 0 calc(var(--lift) / 2);
+    box-shadow: 0 calc(var(--lift) / 2) 0 var(--edge);
+  }
+
+  .btnHue:active { box-shadow: 0 calc(var(--lift) / 2) 0 var(--hue-edge); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn,
+  .brand {
+    transition:
+      scale 300ms var(--ease-bounce),
+      translate 300ms var(--ease-bounce),
+      box-shadow 160ms var(--ease-out),
+      background-color 160ms var(--ease-out);
+  }
+
+  .btn:active,
+  .brand:active {
+    transition-duration: 120ms;
+    transition-timing-function: var(--ease-out);
+  }
+}
+
+/* ---------- shared bits ---------- */
+
+.kicker {
+  font-family: var(--font-display);
+  font-size: var(--step--1);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.lede {
+  font-size: var(--step-1);
+  color: var(--ink-2);
+  max-inline-size: 38ch;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: var(--step-3);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.count {
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 1.6em;
+  padding-inline: 0.35em;
+  border: var(--bw) solid var(--edge);
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-size: 0.55em;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip {
+  padding-block: 0.25em;
+  padding-inline: 0.7em;
+  border: var(--bw) solid var(--hue-edge);
+  border-radius: 999px;
+  background: var(--tile);
+  color: var(--hue-ink);
+  font-family: var(--font-display);
+  font-size: var(--step--1);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* ---------- home: hero ---------- */
+
+/* Stack layers with grid (layout.md): the art layer and the text share one cell. */
+.hero {
+  --i: 5;
+  display: grid;
+  border: var(--bw) solid var(--hue-edge);
+  border-radius: calc(var(--r-card) * 2);
+  background:
+    repeating-conic-gradient(from 0deg at 50% 115%, color-mix(in oklch, var(--tint) 30%, transparent) 0 7deg, transparent 0 14deg),
+    var(--surface);
+  box-shadow: 0 var(--lift-l) 0 var(--hue-edge);
+  overflow: clip;
+}
+
+.hero > * { grid-area: 1 / 1; }
+
+.heroArt {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  color: var(--gold);
+  pointer-events: none;
+}
+
+.spark {
+  inline-size: clamp(2.5rem, 1.5rem + 4vw, 5rem);
+  filter: drop-shadow(0 0.25rem 0 var(--hue-edge));
+}
+
+.spark:nth-child(1) { grid-area: 1 / 1; place-self: center start; margin-inline-start: 6%; rotate: -14deg; }
+.spark:nth-child(2) { grid-area: 1 / 3; place-self: start end; margin: 6%; rotate: 12deg; }
+.spark:nth-child(3) { grid-area: 2 / 3; place-self: end center; margin-block-end: 8%; rotate: -6deg; inline-size: clamp(1.75rem, 1rem + 2.5vw, 3rem); }
+
+.heroText {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-s);
+  padding-block: clamp(3rem, 2rem + 6vw, 7rem);
+  padding-inline: var(--gutter);
+  text-align: center;
+  color: var(--hue-ink);
+}
+
+.heroText .kicker { color: inherit; }
+.heroText .lede { color: inherit; }
+
+.heroTitle {
+  font-size: var(--step-5);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  max-inline-size: 14ch;
+  color: var(--ink);
+}
+
+.heroText .btn { margin-block-start: var(--space-xs); }
+
+@keyframes bob {
+  from { translate: 0 0; }
+  to { translate: 0 -0.5rem; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .spark { animation: bob 2.4s var(--ease-in-out) infinite alternate; }
+  .spark:nth-child(2) { animation-delay: -0.8s; }
+  .spark:nth-child(3) { animation-delay: -1.6s; }
+}
+
+/* ---------- home: save slots ---------- */
+
+.slots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-m);
+}
+
+/* Intrinsic grid + subgrid rows: label, title, meter and footer line up across a row of cartridges. */
+.carts {
+  display: grid;
+  gap: var(--space-l) var(--space-m);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+}
+
+.cart {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-row: span 4;
+  grid-template-rows: subgrid;
+  row-gap: var(--space-xs);
+  padding: var(--pad);
+  border: var(--bw) solid var(--hue-edge);
+  border-radius: var(--r-card);
+  background: var(--tile);
+  color: var(--hue-ink);
+}
+
+/* Shadow change that fades (motion.md): two hard shadows cross-fade instead of repainting one. */
+.cart::before,
+.cart::after {
+  content: "";
+  position: absolute;
+  inset: calc(var(--bw) * -1);
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.cart::before { box-shadow: 0 var(--lift) 0 var(--hue-edge); }
+
+.cart::after {
+  box-shadow: 0 calc(var(--lift-l) + 0.25rem) 0 var(--hue-edge);
+  opacity: 0;
+}
+
+.cartLabel {
+  display: grid;
+  min-block-size: 6.5rem;
+  border: var(--bw) solid var(--hue-edge);
+  border-radius: var(--r-tile); /* concentric with the card */
+  background: var(--tint);
+  overflow: clip;
+}
+
+.cartLabel > * { grid-area: 1 / 1; }
+
+.cartStripes {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 0.9rem,
+    color-mix(in oklch, var(--tint), white 28%) 0.9rem 1.5rem
+  );
+  mask-image: linear-gradient(transparent 35%, black);
+}
+
+.cartLabel > .chip {
+  place-self: start start;
+  margin: 0.6rem;
+}
+
+.sticker {
+  place-self: end end;
+  margin: 0.6rem;
+  padding-block: 0.35em;
+  padding-inline: 0.75em;
+  border: var(--bw) solid var(--edge);
+  border-radius: 0.5rem;
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-family: var(--font-display);
+  font-size: var(--step--1);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: 0 0.2rem 0 var(--edge);
+  rotate: -5deg;
+}
+
+.cartTitle {
+  padding-inline: var(--space-2xs);
+  font-size: var(--step-2);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+/* Whole card clickable from one link (interaction.md). */
+.cartLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.cartLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.cartLink:focus-visible { outline: 2px solid transparent; }
+
+.cart:has(.cartLink:focus-visible) {
+  outline: max(3px, 0.1em) solid var(--focus);
+  outline-offset: 0.25em;
+}
+
+.cart:active { scale: 0.97; }
+
+.meter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-xs);
+  padding-inline: var(--space-2xs);
+}
+
+.stars {
+  display: inline-flex;
+  gap: 0.15em;
+}
+
+.stars > svg {
+  flex: none;
+  inline-size: 1.35em;
+  filter: drop-shadow(0 0.1em 0 var(--hue-edge));
+}
+
+.starOn { color: var(--gold); }
+.starOff { color: color-mix(in oklch, var(--hue-ink) 18%, var(--tile)); }
+
+.meterText {
+  font-size: var(--step--1);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--hue-ink);
+}
+
+.cartFoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-xs);
+  padding-block-start: var(--space-xs);
+  padding-inline: var(--space-2xs);
+  border-block-start: var(--bw) dashed color-mix(in oklch, var(--hue-edge) 35%, transparent);
+  font-family: var(--font-display);
+  font-size: var(--step--1);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cart:hover { translate: 0 -0.25rem; }
+  .cart:hover::before { opacity: 0; }
+  .cart:hover::after { opacity: 1; }
+  .cart:hover .sticker { rotate: 3deg; }
+  .cart:active { translate: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cart { transition: translate 300ms var(--ease-bounce), scale 300ms var(--ease-bounce); }
+  .cart:active { transition-duration: 120ms; transition-timing-function: var(--ease-out); }
+  .cart::before,
+  .cart::after { transition: opacity 200ms var(--ease-out); }
+  .sticker { transition: rotate 300ms var(--ease-bounce); }
+}
+
+/* Empty state */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-block: var(--space-xl);
+  padding-inline: var(--space-m);
+  border: var(--bw) dashed var(--ink-3);
+  border-radius: var(--r-card);
+  text-align: center;
+  color: var(--ink-2);
+}
+
+.emptyStar {
+  inline-size: 4rem;
+  color: var(--gold);
+  rotate: -10deg;
+  filter: drop-shadow(0 0.25rem 0 var(--edge));
+}
+
+.emptyTitle {
+  font-family: var(--font-display);
+  font-size: var(--step-2);
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.empty .btn { margin-block-start: var(--space-s); }
+
+/* ---------- path: HUD ---------- */
+
+/* Container query: the HUD lays out by its own width, not the viewport's. */
+.hud {
+  container: hud / inline-size;
+}
+
+.hudInner {
+  display: grid;
+  gap: var(--space-m);
+  grid-template-areas: "text" "play" "xp";
+  padding: var(--space-l);
+  border: var(--bw) solid var(--edge);
+  border-radius: calc(var(--r-card) * 2);
+  background: var(--card);
+  box-shadow: 0 var(--lift-l) 0 var(--edge);
+}
+
+.hudText {
+  grid-area: text;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.pathTitle {
+  font-size: var(--step-5);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.hudPlay { grid-area: play; }
+
+.hudPlay .btn {
+  inline-size: 100%;
+  text-wrap: balance;
+}
+
+.allClear {
+  padding-block: 0.8em;
+  padding-inline: 1.1em;
+  border: var(--bw) solid var(--edge);
+  border-radius: var(--r-tile);
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-family: var(--font-display);
+  font-size: var(--step-1);
+  font-weight: 800;
+  box-shadow: 0 var(--lift) 0 var(--edge);
+}
+
+@container hud (width > 46rem) {
+  .hudInner {
+    grid-template-columns: 1fr minmax(auto, 24rem);
+    grid-template-areas: "text play" "xp xp";
+    align-items: end;
+  }
+}
+
+.xp {
+  grid-area: xp;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.xpLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-s);
+  font-family: var(--font-display);
+  font-weight: 800;
+}
+
+.xpLabel > :first-child {
+  font-size: var(--step-1);
+  letter-spacing: 0.06em;
+  color: var(--cta);
+}
+
+.xpNums { font-variant-numeric: tabular-nums; }
+
+/* XP bar: --xp comes in from the style prop, the typed --arcade-xp animates from 0 on load. */
+.xpTrack {
+  --arcade-xp: var(--xp, 0);
+  display: flex;
+  block-size: clamp(1.25rem, 1rem + 1vw, 1.75rem);
+  padding: 0.2rem;
+  border: var(--bw) solid var(--edge);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink) 10%, var(--card));
+  overflow: clip;
+}
+
+.xpFill {
+  inline-size: calc(var(--arcade-xp) * 100%);
+  border-radius: inherit;
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 0.5rem, color-mix(in oklch, var(--gold), white 35%) 0.5rem 0.9rem),
+    var(--gold);
+  box-shadow: inset 0 -0.2rem 0 color-mix(in oklch, var(--gold), black 22%);
+}
+
+@keyframes xp-fill {
+  from { --arcade-xp: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .xpFill { animation: xp-fill 900ms var(--ease-out) 150ms both; }
+}
+
+/* ---------- path: world map carousel ---------- */
+
+.mapHead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-xs) var(--space-m);
+}
+
+.mapHint {
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.mapHint > svg { color: var(--cta); }
+
+/* Carousel on native scroll (scroll-and-viewport.md), as a grid so worlds can share subgrid rows.
+   The script-driven arrow buttons are omitted: server components only. */
+.carousel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: min(88%, 27rem);
+  grid-template-rows: repeat(4, auto);
+  column-gap: var(--space-m);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  padding-inline: var(--edge-pad);
+  scroll-padding-inline: var(--edge-pad);
+  padding-block: var(--space-xs) var(--space-l); /* room for the sticker shadows */
+  scrollbar-width: none;
+
+  /* Edges fade only when the row overflows, and only on the side with more to see. */
+  animation: edges linear;
+  animation-timeline: scroll(self inline);
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--arcade-fade-start),
+    #000 calc(100% - var(--arcade-fade-end)),
+    transparent
+  );
+}
+
+@keyframes edges {
+  from { --arcade-fade-start: 0px; --arcade-fade-end: 3rem; }
+  10%, 90% { --arcade-fade-start: 3rem; --arcade-fade-end: 3rem; }
+  to { --arcade-fade-start: 3rem; --arcade-fade-end: 0px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .carousel { scroll-behavior: smooth; }
+}
+
+/* Each world spans the carousel's four rows, so heads, blurbs, meta and tiles line up across worlds. */
+.world {
+  display: grid;
+  grid-row: span 4;
+  grid-template-rows: subgrid;
+  row-gap: var(--space-s);
+  scroll-snap-align: start;
+  padding: var(--pad);
+  border: var(--bw) solid var(--hue-edge);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  color: var(--hue-ink);
+  box-shadow: 0 var(--lift-l) 0 var(--hue-edge);
+}
+
+.worldHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-s);
+  border: var(--bw) solid var(--hue-edge);
+  border-radius: var(--r-tile); /* concentric: world radius = this + world padding */
+  background:
+    radial-gradient(color-mix(in oklch, var(--tint), white 30%) 0.12rem, transparent 0.13rem) 0 0 / 0.9rem 0.9rem,
+    var(--tint);
+  color: var(--on-tint);
+}
+
+.worldBadges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-xs);
+}
+
+.worldNo {
+  font-family: var(--font-display);
+  font-size: var(--step--1);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.here,
+.cleared {
+  padding-block: 0.2em;
+  padding-inline: 0.6em;
+  border: var(--bw) solid var(--edge);
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: var(--step--1);
+  font-weight: 800;
+  line-height: 1.2;
+  box-shadow: 0 0.15rem 0 var(--edge);
+}
+
+/* :has() for state: the "You are here" flag shows only on the world that holds the next level. */
+.here {
+  display: none;
+  background: var(--cta);
+  color: var(--on-cta);
+  rotate: -3deg;
+}
+
+.world:has(.tile[data-next]) .here { display: inline-block; }
+
+.cleared {
+  background: var(--gold);
+  color: var(--gold-ink);
+}
+
+.worldTitle {
+  font-size: var(--step-3);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.why {
+  padding-inline: var(--space-2xs);
+  color: color-mix(in oklch, var(--hue-ink) 85%, var(--surface));
+}
+
+.worldMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-inline: var(--space-2xs);
+}
+
+.worldCount {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.worldCount > svg {
+  color: var(--gold);
+  block-size: 1.2cap;
+}
+
+/* ---------- level tiles ---------- */
+
+/* Intrinsic grid inside each world; also a container so tile numbers scale with cqi. */
+.tiles {
+  container: tiles / inline-size;
+  display: grid;
+  align-content: start;
+  gap: var(--space-s) var(--space-xs);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr));
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  padding: var(--tpad);
+  border: var(--bw) solid var(--hue-edge);
+  border-radius: var(--r-tile);
+  background: var(--tile);
+  box-shadow: 0 var(--lift) 0 var(--hue-edge);
+}
+
+/* Stack layers: step number, status glyph and bonus badge share one grid cell. */
+.tileTop {
+  display: grid;
+  min-block-size: 3.75rem;
+}
+
+.tileTop > * { grid-area: 1 / 1; }
+
+.stepNo {
+  place-self: start start;
+  padding-inline: 0.2em;
+  border-radius: var(--r-chip); /* concentric with the tile */
+  background: var(--surface);
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 1rem + 8cqi, 2.25rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.glyph {
+  position: relative;
+  place-self: start end;
+  display: grid;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border: var(--bw) solid var(--hue-edge);
+  border-radius: 50%;
+  background: var(--tile);
+  color: var(--hue-ink);
+}
+
+.glyph > svg { inline-size: 62%; }
+
+.bonus {
+  place-self: end end;
+  padding-block: 0.1em;
+  padding-inline: 0.5em;
+  border: 0.125rem solid var(--edge);
+  border-radius: 0.4rem;
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  rotate: -6deg;
+}
+
+.tileName {
+  font-family: var(--font-display);
+  font-size: var(--step-0);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: clip;
+}
+
+.tileLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.tileLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.tileLink:focus-visible { outline: 2px solid transparent; }
+
+.tile:has(.tileLink:focus-visible) {
+  outline: max(3px, 0.1em) solid var(--focus);
+  outline-offset: 0.2em;
+}
+
+.tileSummary {
+  font-size: var(--step--1);
+  line-height: 1.35;
+  color: color-mix(in oklch, var(--hue-ink) 75%, var(--tile));
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: clip;
+}
+
+.tileStatus {
+  margin-block-start: auto; /* status sits at the bottom of a stretched tile */
+  padding-block-start: var(--space-2xs);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--hue-ink) 70%, var(--tile));
+}
+
+.tileStatus strong { color: var(--cta); }
+
+/* Status looks */
+.tile[data-status="mastered"] {
+  background: color-mix(in oklch, var(--gold) 22%, var(--tile));
+}
+
+.tile[data-status="mastered"] .glyph {
+  background: var(--gold);
+  color: var(--gold-ink);
+  border-color: var(--edge);
+}
+
+.tile[data-status="needs_review"] .glyph {
+  background: var(--alert);
+  color: oklch(0.2 0.05 40);
+  border-color: var(--edge);
+}
+
+.tile[data-status="needs_review"] { border-color: color-mix(in oklch, var(--alert), black 30%); }
+
+.tile[data-status="in_progress"] .glyph { color: var(--hue-edge); background: var(--tint); }
+
+.tile[data-status="locked"] {
+  border-style: dashed;
+  box-shadow: none;
+  background: color-mix(in oklch, var(--tile) 70%, var(--surface));
+}
+
+.tile[data-status="locked"] .glyph {
+  color: color-mix(in oklch, var(--hue-ink) 45%, var(--tile));
+  border-style: dashed;
+}
+
+/* The next level: hot-pink frame and a ring that pulses (static ring when motion is reduced). */
+.tile[data-next] {
+  border-color: var(--edge);
+  border-style: solid;
+  background: color-mix(in oklch, var(--cta) 14%, var(--tile));
+  box-shadow: 0 var(--lift) 0 var(--edge), 0 0 0 0.2rem var(--cta);
+}
+
+.tile[data-next] .glyph {
+  background: var(--cta);
+  color: var(--on-cta);
+  border-color: var(--edge);
+}
+
+.tile[data-next] .glyph > svg { translate: 8% 0; }
+
+.glyph::after {
+  content: "";
+  position: absolute;
+  inset: -0.35rem;
+  border-radius: 50%;
+  border: 0.15rem solid var(--cta);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tile[data-next] .glyph::after { opacity: 1; }
+
+@keyframes pulse {
+  from { scale: 0.85; opacity: 1; }
+  to { scale: 1.5; opacity: 0; }
+}
+
+.tile:active { scale: 0.96; }
+
+@media (hover: hover) and (pointer: fine) {
+  .tile:hover {
+    translate: 0 -0.2rem;
+    box-shadow: 0 calc(var(--lift) + 0.2rem) 0 var(--hue-edge);
+  }
+
+  .tile[data-next]:hover { box-shadow: 0 calc(var(--lift) + 0.2rem) 0 var(--edge), 0 0 0 0.2rem var(--cta); }
+  .tile[data-status="locked"]:hover { box-shadow: 0 0.2rem 0 color-mix(in oklch, var(--hue-edge) 40%, transparent); }
+  .tile:active { translate: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tile {
+    transition:
+      translate 300ms var(--ease-bounce),
+      scale 300ms var(--ease-bounce),
+      box-shadow 160ms var(--ease-out);
+  }
+
+  .tile:active { transition-duration: 120ms; transition-timing-function: var(--ease-out); }
+
+  .tile[data-next] .glyph::after { animation: pulse 1.4s var(--ease-out) infinite; }
+}

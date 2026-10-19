@@ -1,0 +1,63 @@
+/* PROTOTYPE: throwaway. */
+
+/* A variant draws its own chrome, so hide the app's header and footer while one is mounted.
+   :has() reads page state from the DOM, so no script toggles a class on <body>. */
+body:has([data-prototype-variant]) > :is(header, footer) { display: none; }
+
+.proto-switcher {
+  --bar: oklch(0.2 0 none);
+  position: fixed;
+  z-index: 1000;
+  inset-block-end: calc(1rem + env(safe-area-inset-bottom, 0px));
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: var(--bar);
+  color: oklch(0.98 0 none);
+  font: 500 13px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0;
+  box-shadow: 0 8px 30px oklch(0 0 none / 0.35);
+  outline: 1px solid oklch(1 0 none / 0.15);
+}
+
+.proto-switcher span {
+  padding-inline: 0.75rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.proto-switcher button {
+  position: relative;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+/* Hit area at least 44px though the button draws at 32px. */
+.proto-switcher button::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, (100% - 44px) / 2);
+}
+
+.proto-switcher button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.proto-switcher button:active { scale: 0.95; }
+
+@media (hover: hover) and (pointer: fine) {
+  .proto-switcher button:hover { background: color-mix(in oklch, var(--bar), white 18%); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .proto-switcher button { transition: scale 120ms cubic-bezier(0.23, 1, 0.32, 1), background-color 120ms; }
+}
