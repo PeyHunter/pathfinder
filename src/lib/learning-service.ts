@@ -4,14 +4,22 @@ import { chatMessages, conceptPrereqs, concepts, modules, paths, progress, quizA
 import { generateStructured, generateText, MODEL_FAST } from "./llm";
 import { computeStatuses, nextUp, type Status } from "./progress";
 import { loadPrompt } from "./prompts";
-import { ModuleLessons, QuizGrade } from "./schemas";
+import { MAX_QUIZ_LEVEL, MIN_QUIZ_LEVEL } from "./limits";
+import { ModuleLessons, QuizGrade, QuizQuestions } from "./schemas";
 
 /** What the learner sees. Rubrics live in concepts.rubricJson and never leave the server. */
 export type Lesson = {
   explanation: string;
   example: { description: string; code: string; language: string };
   questions: { prompt: string; kind: "explain" | "apply" | "code" }[];
+  /** Difficulty of the questions, MIN_QUIZ_LEVEL-MAX_QUIZ_LEVEL. Missing on lessons written before levels existed. */
+  level?: number;
+  /** Set when the questions are replaced: attempts up to this id answered the old questions. */
+  sinceAttemptId?: number;
 };
+
+// Lessons from before quiz levels had medium-ish questions, so "easier" still has somewhere to go.
+const quizLevel = (lesson: Lesson) => lesson.level ?? 2;
 
 // Older turns drop off so a long chat doesn't resend (and re-bill) its whole history on every message.
 const CHAT_HISTORY = 20;
@@ -163,6 +171,7 @@ export async function runModuleContent(moduleId: number) {
           explanation: l.explanation,
           example: l.example,
           questions: l.questions.map(({ prompt, kind }) => ({ prompt, kind })),
+          level: MIN_QUIZ_LEVEL,
         };
         tx.update(concepts)
           .set({ contentJson: JSON.stringify(lesson), rubricJson: JSON.stringify(l.questions.map((q) => q.rubric)) })
@@ -208,7 +217,10 @@ export function openConcept(pathId: number, slug: string) {
   const siblings = cons.filter((x) => x.moduleId === c.moduleId);
   const i = siblings.findIndex((x) => x.id === c.id);
   const link = (x?: { slug: string; name: string }) => (x ? { slug: x.slug, name: x.name } : null);
+  const lesson = c.contentJson ? (JSON.parse(c.contentJson) as Lesson) : null;
   const last = db.select().from(quizAttempts).where(eq(quizAttempts.conceptId, c.id)).orderBy(desc(quizAttempts.id)).get();
+  // Answers to questions that have since been replaced don't belong in the new answer boxes.
+  const lastIsCurrent = last && last.id > (lesson?.sinceAttemptId ?? 0);
   const stored = db.select().from(progress).where(eq(progress.conceptId, c.id)).get();
   const hasNextModule = !!getModuleRow(pathId, mod.order + 1);
 
@@ -221,7 +233,7 @@ export function openConcept(pathId: number, slug: string) {
     name: c.name,
     summary: c.summary,
     status: statuses.get(c.id)!,
-    lesson: c.contentJson ? (JSON.parse(c.contentJson) as Lesson) : null,
+    lesson,
     prerequisites: edges
       .filter((e) => e.conceptId === c.id)
       .map((e) => cons.find((x) => x.id === e.prereqId)!)
@@ -235,7 +247,7 @@ export function openConcept(pathId: number, slug: string) {
       .where(eq(chatMessages.conceptId, c.id))
       .orderBy(chatMessages.id)
       .all(),
-    lastAttempt: last
+    lastAttempt: lastIsCurrent
       ? { answers: JSON.parse(last.answersJson) as string[], grade: JSON.parse(last.openResultsJson!) as QuizGrade, passed: last.passed }
       : null,
   };
@@ -345,4 +357,50 @@ export async function askTutor(pathId: number, slug: string, question: string) {
     ])
     .run();
   return reply;
+}
+
+/**
+ * Replaces a concept's quiz with new questions one level harder or easier. Progress is left alone, so a
+ * mastered concept stays mastered and the new quiz is extra practice.
+ */
+export async function changeQuizLevel(pathId: number, slug: string, direction: "harder" | "easier") {
+  const c = getConceptRow(pathId, slug);
+  if (!c?.contentJson) throw new Error("This concept has no lesson yet.");
+  const lesson = JSON.parse(c.contentJson) as Lesson;
+  const current = quizLevel(lesson);
+  const level = current + (direction === "harder" ? 1 : -1);
+  if (level < MIN_QUIZ_LEVEL || level > MAX_QUIZ_LEVEL) throw new Error(`The questions are already as ${direction === "harder" ? "hard" : "easy"} as they go.`);
+  const path = db.select({ level: paths.learnerLevel }).from(paths).where(eq(paths.id, pathId)).get()!;
+
+  const { value } = await generateStructured({
+    prompt: loadPrompt("quiz-questions", {
+      direction: direction === "harder" ? "a little harder" : "a little easier",
+      level: String(level),
+      current_level: String(current),
+      level_note: path.level,
+      concept: `${c.name}: ${c.summary}`,
+      lesson: `${lesson.explanation}\n\nExample:\n${lesson.example.description}\n${lesson.example.code}`,
+      current: lesson.questions.map((q, i) => `${i + 1}. ${q.prompt}`).join("\n"),
+    }),
+    schema: QuizQuestions,
+    model: MODEL_FAST,
+    effort: "low",
+    check: (v) =>
+      v.questions.length >= 2 && v.questions.length <= 3
+        ? { ok: true, result: null }
+        : { ok: false, errors: [`Return 2-3 questions, not ${v.questions.length}.`] },
+  });
+
+  const last = db.select({ id: quizAttempts.id }).from(quizAttempts).where(eq(quizAttempts.conceptId, c.id)).orderBy(desc(quizAttempts.id)).get();
+  const next: Lesson = {
+    ...lesson,
+    questions: value.questions.map(({ prompt, kind }) => ({ prompt, kind })),
+    level,
+    sinceAttemptId: last?.id ?? 0,
+  };
+  db.update(concepts)
+    .set({ contentJson: JSON.stringify(next), rubricJson: JSON.stringify(value.questions.map((q) => q.rubric)) })
+    .where(eq(concepts.id, c.id))
+    .run();
+  return next;
 }

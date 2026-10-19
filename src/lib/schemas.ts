@@ -69,6 +69,12 @@ export const PathGraph = z.object({
 });
 export type PathGraph = z.infer<typeof PathGraph>;
 
+const QuizQuestion = z.object({
+  prompt: z.string().describe("The question, answerable in the learner's own words in a few sentences or lines"),
+  kind: z.enum(["explain", "apply", "code"]),
+  rubric: z.string().describe("What a correct answer must show. Never shown to the learner."),
+});
+
 // Lessons for every concept in one module, generated together when the module is first opened.
 export const ModuleLessons = z.object({
   lessons: z.array(
@@ -82,19 +88,15 @@ export const ModuleLessons = z.object({
         code: z.string().describe("A short code or terminal snippet that shows the idea. Empty string if code doesn't fit."),
         language: z.string().describe("Language of the snippet, e.g. 'bash', 'yaml', 'python'. Empty string if no code."),
       }),
-      questions: z
-        .array(
-          z.object({
-            prompt: z.string().describe("The question, answerable in the learner's own words in a few sentences or lines"),
-            kind: z.enum(["explain", "apply", "code"]),
-            rubric: z.string().describe("What a correct answer must show. Never shown to the learner."),
-          }),
-        )
-        .describe("2-3 questions"),
+      questions: z.array(QuizQuestion).describe("2-3 questions"),
     }),
   ),
 });
 export type ModuleLessons = z.infer<typeof ModuleLessons>;
+
+// A new set of questions for one concept, one step harder or easier than the current set.
+export const QuizQuestions = z.object({ questions: z.array(QuizQuestion).describe("2-3 questions") });
+export type QuizQuestions = z.infer<typeof QuizQuestions>;
 
 export const QuizGrade = z.object({
   results: z.array(
